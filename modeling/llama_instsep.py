@@ -140,23 +140,37 @@ class LlamaModel(transformers.LlamaModel):
 
         # Register forward hook
         self.hook = {}
-        for layer_idx, module in enumerate(self.layers):
-            if hasattr(module, 'mlp') and module.mlp is not None:
-                hook_name = f'feat_{layer_idx}'  # Use a unique name for each layer
-                hook_with_idx = partial(self.hook_func, layer_idx=layer_idx)
-                module.mlp.register_forward_hook(hook_with_idx)
-                self.hook[hook_name] = None  # Initialize a hook entry for this layer
-
+        self.hook_handles = []  # Store handles to remove hooks later
         self.post_init()
 
     def hook_func(self, module, input, output, layer_idx):
         self.hook[f'feat_{layer_idx}'] = output.detach()
 
-    def clear_hooks(self):
+    def enable_hooks(self):
+        """ Registers hooks dynamically """
+        self.hook.clear()  # Reset hook storage
+        self.hook_handles.clear()
+
         for layer_idx, module in enumerate(self.layers):
             if hasattr(module, 'mlp') and module.mlp is not None:
-                hook_name = f'feat_{layer_idx}'  # Use a unique name for each layer
-                self.hook[hook_name] = None  # Initialize a hook entry for this layer
+                hook_name = f'feat_{layer_idx}'
+                self.hook[hook_name] = None
+
+                hook_handle = module.mlp.register_forward_hook(
+                    partial(self.hook_func, layer_idx=layer_idx)
+                )
+                self.hook_handles.append(hook_handle)  # Store the handle for removal
+
+    def disable_hooks(self):
+        """ Removes hooks dynamically and clears stored activations """
+        for handle in self.hook_handles:
+            handle.remove()  # Unregister the hook
+        self.hook_handles.clear()
+        self.hook.clear()  # Free memory
+
+    def clear_hooks(self):
+        """ Clears stored activations in self.hook without removing hooks """
+        self.hook.clear()
 
     def forward(
         self,

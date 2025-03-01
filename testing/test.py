@@ -62,6 +62,7 @@ def load_model_and_tokenizer(base_model_path, adapter_model_path, customized_mod
                 trust_remote_code=True,
                 ignore_mismatched_sizes=True,
             )
+            model.model.disable_hooks()
             model = model.eval()
             model.to(device)
     else:
