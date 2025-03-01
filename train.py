@@ -82,8 +82,8 @@ class DataCollatorForSupervisedDataset(object):
         )
 
         expert_labels = torch.nn.utils.rnn.pad_sequence(
-            expert_labels, batch_first=True, padding_value=1
-        ) # pad the sequence with 1 (data)
+            expert_labels, batch_first=True, padding_value=2
+        ) # pad the sequence with 2? (response)
 
         labels = torch.nn.utils.rnn.pad_sequence(
             labels, batch_first=True, padding_value=IGNORE_INDEX)

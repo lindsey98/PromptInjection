@@ -156,13 +156,17 @@ def _tokenize_fn(strings, tokenizer, frontend_delimiters='SpclSpclSpcl', compute
         # Find the starting delimiters of Input
         expert_labels = []
         for seq in input_ids:
-            separator_position = find_first_occurrence(seq, data_seperator)
-            if separator_position == -1:
-                separator_position = find_first_occurrence(seq, response_seperator)
-
+            data_separator_position = find_first_occurrence(seq, data_seperator)
             expert_this = torch.zeros(len(seq), dtype=torch.long)  # Default: instruction (0)
-            if separator_position != -1:
-                expert_this[separator_position:] = 1  # After the separator: data (1)
+
+            if data_separator_position != -1:
+                expert_this[data_separator_position:] = 1  # After the separator: data (1)
+
+            response_separator_position = find_first_occurrence(seq, response_seperator)
+            if response_separator_position != -1:
+                expert_this[response_separator_position:] = 2  # After the separator: response (2)
+            else:
+                expert_this[-1] = 2 # the sequence is truncated, make the last token id to be response (2)
             expert_labels.append(expert_this)
 
     input_ids_lens = [

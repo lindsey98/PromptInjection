@@ -106,8 +106,7 @@ def load_lora_model(model_name_or_path, customized_model_class, load_model=True)
     :return:
     '''
     base_model_path = model_name_or_path
-    for base_model_selection in ["meta-llama/Llama-3.2-1B",
-                                 "meta-llama/Llama-3.2-1B-Instruct"]:
+    for base_model_selection in ["meta-llama/Llama-3.2-1B", "meta-llama/Llama-3.2-1B-Instruct"]:
         if base_model_selection in model_name_or_path:
             base_model_path = base_model_selection
     frontend_delimiters = model_name_or_path.split("/")[1] if model_name_or_path.split("/")[1] in DELIMITERS else "SpclSpclSpcl"
@@ -288,19 +287,18 @@ def test_model_output(llm_input, model, tokenizer, frontend_delimiters, pass_exp
 def test_parser():
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
-    parser.add_argument('-a', '--attack', type=str,
-                        default=['completion_real', 'completion_realcmb'], nargs='+')
+    parser.add_argument('-a', '--attack', type=str, default=['completion_real', 'completion_realcmb'],
+                        choices=["none", "ignore", "naive", "completion_real", "completion_realcmb", "escape_separation"], nargs='+')
     parser.add_argument('-d', '--defense', type=str, default='none', # zero-shot defenses, never included in the adversarial training
                         choices=['none', 'sandwich', 'instructional', 'reminder', 'isolation', 'incontext'],
                         help='Baseline test-time zero-shot prompting defense')
-    parser.add_argument('--num_separated_layer', type=int, default=1)
     parser.add_argument('--data_path', type=str, default='datasets/davinci_003_outputs.json')
     parser.add_argument('--openai_config_path', type=str, default='datasets/openai_configs.yaml')
     parser.add_argument("--sample_ids", type=int, nargs="+", default=None,
                         help='Sample ids to test in GCG, None for testing all samples')
     parser.add_argument('--log', default=False, action='store_true')
-    parser.add_argument('--pass_expert_labels', default=False, action='store_true')
-    parser.add_argument('--customized_model_class', type=str, default='')
+    parser.add_argument('--pass_expert_labels', default=False, help="Whether to past expert labels instruction/data as an input", action='store_true')
+    parser.add_argument('--customized_model_class', type=str, help="Customized model class", default='')
     return parser.parse_args()
 
 
@@ -350,7 +348,7 @@ def test(args):
                 writer = csv.writer(outfile)
                 writer.writerows([[llm_input[i], s[0], s[1]] for i, s in enumerate(outputs)])
 
-        else:  # if otherwise evaluate utility using gpt-4o-turbo
+        else:  # otherwise evaluate utility using gpt-4o-turbo
             if not os.path.exists(benign_response_name):
                 for i in range(len(data)):
                     assert data[i]['input'] in llm_input[i]

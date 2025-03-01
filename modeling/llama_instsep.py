@@ -18,7 +18,7 @@ class LlamaMoEConfig(LlamaConfig):
         super().__init__(*args, **kwargs)
         self.apply_input_shifts = kwargs.get('apply_input_shifts', True)
         self.apply_intermediate_shifts = kwargs.get('apply_intermediate_shifts', False)
-        self.num_experts = kwargs.get('num_experts', 2)
+        self.num_experts = kwargs.get('num_experts', 3)
 
     def to_dict(self):
         """Ensures the custom keys are included when saving config."""
