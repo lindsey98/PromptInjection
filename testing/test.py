@@ -52,8 +52,7 @@ def load_model_and_tokenizer(base_model_path, adapter_model_path, customized_mod
             model = model.eval()
             model.to(device)
         if customized_model_class == "LlamaForCausalLMMoE":
-            with open(f"./training/config/{adapter_model_path.split('/')[1]}.yaml", "r") as file:
-                custom_config_dict = yaml.safe_load(file)
+            custom_config_dict = jload(f"./training/config/{adapter_model_path.split('/')[1]}.json")
             config = LlamaMoEConfig.from_dict(custom_config_dict)
             model = LlamaForCausalLMMoE.from_pretrained(
                 base_model_path,
@@ -105,10 +104,7 @@ def load_lora_model(model_name_or_path, customized_model_class, load_model=True)
     :param load_model:
     :return:
     '''
-    base_model_path = model_name_or_path
-    for base_model_selection in ["meta-llama/Llama-3.2-1B", "meta-llama/Llama-3.2-1B-Instruct"]:
-        if base_model_selection in model_name_or_path:
-            base_model_path = base_model_selection
+    base_model_path = model_name_or_path.split("-SpclSpclSpcl")[0]
     frontend_delimiters = model_name_or_path.split("/")[1] if model_name_or_path.split("/")[1] in DELIMITERS else "SpclSpclSpcl"
     training_attacks = "NaiveCompletion"
 

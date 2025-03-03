@@ -13,6 +13,7 @@ from transformers.utils import logging
 from torch import nn
 from modeling.llama_instsep import LlamaForCausalLMMoE, LlamaMoEConfig
 import yaml
+from struq import jload
 logger = logging.get_logger(__name__)
 
 def train():
@@ -26,9 +27,8 @@ def train():
     config = LlamaMoEConfig.from_pretrained(
         model_args.model_name_or_path,
     )
-    if len(model_args.extra_config_yaml_path) > 0:
-        with open(model_args.extra_config_yaml_path, "r") as file:
-            loaded_custom_config = yaml.safe_load(file)
+    if len(model_args.extra_config_path) > 0:
+        loaded_custom_config = jload(model_args.extra_config_path)
         merged_config_dict = {**config.to_dict(), **loaded_custom_config}
         config = LlamaMoEConfig.from_dict(merged_config_dict)
 

@@ -16,7 +16,7 @@ import difflib
 class ModelArguments: 
     model_name_or_path: Optional[str] = field(default="facebook/opt-125m")
     base_model_name_or_path: Optional[str] = field(default="")
-    extra_config_yaml_path: Optional[str] = field(default="")
+    extra_config_path: Optional[str] = field(default="")
     window_size: int = field(default=0, metadata={"help": "Window size for the sliding window attention."})
     padding_side: str = field(default="right", metadata={"help": "Padding side for tokenization."})
 
@@ -45,6 +45,7 @@ class TrainingArguments(trl.ORPOConfig): #transformers.TrainingArguments): #
     desirable_weight: Optional[float] = field(default=1)
     undesirable_weight: Optional[float] = field(default=1)
     report_to: Optional[str] = "wandb"
+    resume_from_checkpoint: Optional[bool] = field(default=True)
 
 @dataclass
 class DataCollatorForSupervisedDatasetOrig(object):
