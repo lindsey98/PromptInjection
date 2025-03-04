@@ -142,6 +142,13 @@ class LlamaModel(transformers.LlamaModel):
         self.hook = {}
         self.hook_handles = []  # Store handles to remove hooks later
         self.post_init()
+        self.custom_initialize()
+
+    def custom_initialize(self):
+        for i in range(self.input_shifts.weight.size(0)):
+            mean = 0.1 * i  # Example: varying mean
+            std = 0.05 + 0.01 * i  # Example: varying std
+            nn.init.normal_(self.input_shifts.weight[i], mean=mean, std=std)
 
     def hook_func(self, module, input, output, layer_idx):
         self.hook[f'feat_{layer_idx}'] = output.detach()
