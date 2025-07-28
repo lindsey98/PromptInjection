@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Sequence
+from typing import Dict, Optional, Sequence, List
 import torch
 import transformers
 import trl
@@ -22,7 +22,10 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
-    data_path: str = field(default=None, metadata={"help": "Path to the training data."})
+    data_path_list: List[str] = field(
+        default_factory=list,
+        metadata={"help": "List of file paths to the training data.", "nargs": "+"}
+    )
 
 @dataclass
 class AttackArguments: 
@@ -66,10 +69,10 @@ def train():
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
         model_max_length=training_args.model_max_length,
         padding_side=model_args.padding_side,
-        use_fast=False,
+        use_fast=True,
+        batched=True
     )
 
     special_tokens_dict = dict()

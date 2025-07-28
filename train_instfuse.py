@@ -8,13 +8,13 @@ import torch
 from train import smart_tokenizer_and_embedding_resize, ModelArguments, DataArguments, TrainingArguments, AttackArguments, find_closest_match
 from config import DEFAULT_TOKENS, SPECIAL_DELM_TOKENS, DELIMITERS
 from transformers.utils import logging
-from modeling.llama_instfuse import LlamaForCausalLMFuse, LlamaFuseConfig
+from modeling.llama_instfuse import LlamaForCausalLMFuse, LlamaForCausalLMFuseV2, LlamaFuseConfig
 from transformers import Trainer
 import os
 from data_generation.struq import jload, make_supervised_data_module
 from transformers.trainer import PreTrainedModel, is_sagemaker_mp_enabled, Adafactor, is_bitsandbytes_available
 from transformers.training_args import OptimizerNames
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, List
 from torch import nn
 from packaging import version
 import importlib.metadata
@@ -27,16 +27,6 @@ class MyTrainer(Trainer):
     def get_optimizer_cls_and_kwargs(
         args: TrainingArguments, model: Optional[PreTrainedModel] = None
     ) -> Tuple[Any, Any]:
-        """
-        Returns the optimizer class and optimizer parameters based on the training arguments.
-
-        Args:
-            args (`transformers.training_args.TrainingArguments`):
-                The training arguments for the training session.
-
-        """
-
-        # parse args.optim_args
         optim_args = {}
         if args.optim_args:
             for mapping in args.optim_args.replace(" ", "").split(","):
@@ -151,6 +141,8 @@ class MyTrainer(Trainer):
     def create_optimizer(self):
 
         opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+        special_params_list: List[str] = ["down_fuse", "residual_weight", "label_gap", "inst_fuse",
+                                          "deinstruction_shift"]
 
         if self.optimizer is None:
             decay_parameters = self.get_decay_parameter_names(opt_model)
@@ -158,7 +150,7 @@ class MyTrainer(Trainer):
                 {
                     "params": [
                         p for n, p in opt_model.named_parameters()
-                        if ("residual_weight" in n) or ("label_gap" in n) and p.requires_grad
+                        if any(kw in n for kw in special_params_list) and p.requires_grad
                     ],
                     "weight_decay": 0.0,
                     "lr": self.args.learning_rate * 10,
@@ -166,7 +158,7 @@ class MyTrainer(Trainer):
                 {
                     "params": [
                         p for n, p in opt_model.named_parameters()
-                        if ("residual_weight" not in n) and ("label_gap" not in n) and (n in decay_parameters) and p.requires_grad
+                        if (not any(kw in n for kw in special_params_list)) and (n in decay_parameters) and p.requires_grad
                     ],
                     "weight_decay": self.args.weight_decay,
                     "lr": self.args.learning_rate,
@@ -174,7 +166,7 @@ class MyTrainer(Trainer):
                 {
                     "params": [
                         p for n, p in opt_model.named_parameters()
-                        if ("residual_weight" not in n) and ("label_gap" not in n) and (n not in decay_parameters) and p.requires_grad
+                        if (not any(kw in n for kw in special_params_list)) and (n not in decay_parameters) and p.requires_grad
                     ],
                     "weight_decay": 0.0,
                     "lr": self.args.learning_rate,
@@ -183,18 +175,12 @@ class MyTrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = self.get_optimizer_cls_and_kwargs(self.args, opt_model)
 
-            # Overwrite `params` in case it's created by `get_optimizer_cls_and_kwargs`
-            # e.g. for GaLore optimizer.
             if "params" in optimizer_kwargs:
                 optimizer_grouped_parameters = optimizer_kwargs.pop("params")
 
-            # Overwrite `model` in case it's created by `get_optimizer_cls_and_kwargs`
-            # e.g. for LOMO optimizer.
             if "model" in optimizer_kwargs:
                 optimizer_grouped_parameters = optimizer_kwargs.pop("model")
 
-            # For layer-wise dummy optimizers we overwrite optimizer_grouped_parameters with `optimizer_dict`
-            # to avoid arguments conflicts.
             if "optimizer_dict" in optimizer_kwargs:
                 optimizer_grouped_parameters = optimizer_kwargs.pop("optimizer_dict")
 
@@ -228,20 +214,15 @@ def train():
     config = LlamaFuseConfig.from_pretrained(
         model_args.model_name_or_path,
     )
-    if len(model_args.extra_config_path) > 0:
-        loaded_custom_config = jload(model_args.extra_config_path)
-        config_dict = config.to_dict()
-        config_dict.update(loaded_custom_config)
-        config = LlamaFuseConfig(**config_dict)
+
+    config.residual = True
+    config.bit_flip = True
 
     model = LlamaForCausalLMFuse.from_pretrained(
         model_args.model_name_or_path,
         ignore_mismatched_sizes=True,
         config=config,
     )
-
-    if model_args.window_size > 0:
-        model.config.window = model_args.window_size
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -271,7 +252,10 @@ def train():
 
     # Construct dataloader
     frontend_delimiters = 'SpclSpclSpcl' if 'SpclSpclSpcl' in data_args.attack else find_closest_match(model_args.model_name_or_path, DELIMITERS)
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args, downsample=training_args.downsample, frontend_delimiters=frontend_delimiters)
+    data_module = make_supervised_data_module(tokenizer=tokenizer,
+                                              data_args=data_args,
+                                              downsample=training_args.downsample,
+                                              frontend_delimiters=frontend_delimiters)
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 

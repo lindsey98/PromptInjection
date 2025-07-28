@@ -20,7 +20,7 @@ def train():
         model_args.model_name_or_path,
     )
 
-    model = LlamaForCausalLMMoE.from_pretrained(
+    model = LlamaForCausalLMMoEV2.from_pretrained(
         model_args.model_name_or_path,
         ignore_mismatched_sizes=True,
         config=config,
@@ -57,10 +57,7 @@ def train():
 
     # Construct dataloader
     frontend_delimiters = 'SpclSpclSpcl' if 'SpclSpclSpcl' in data_args.attack else find_closest_match(model_args.model_name_or_path, DELIMITERS)
-    data_module = make_supervised_data_module(tokenizer=tokenizer,
-                                              data_args=data_args,
-                                              frontend_delimiters=frontend_delimiters,
-                                              downsample=training_args.downsample)
+    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args, frontend_delimiters=frontend_delimiters, downsample=training_args.downsample)
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 
