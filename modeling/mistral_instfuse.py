@@ -1,8 +1,8 @@
 
 import transformers
 import torch
-from transformers import LlamaConfig
-from transformers.models.llama.modeling_llama import ACT2FN
+from transformers import MistralConfig
+from modeling.llama_instfuse import _get_last_indices, CausalLMFuseOutputWithPast
 from transformers.utils import logging
 from typing import Union, Optional, Tuple, List, Dict, Any
 from torch import nn
@@ -10,37 +10,17 @@ from transformers.modeling_outputs import CausalLMOutputWithPast, BaseModelOutpu
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 import torch.nn.functional as F
-from functools import partial
-from dataclasses import dataclass
 logger = logging.get_logger(__name__)
 
-
-def _get_last_indices(label_index: int, expert_labels: torch.LongTensor) -> torch.LongTensor:
-    batch_size, seq_len = expert_labels.shape
-
-    mask = (expert_labels == label_index)  # (B, L)
-    seq_indices = torch.arange(seq_len, device=expert_labels.device).unsqueeze(0)  # (1, L)
-
-    # set non-equal positions to -1
-    masked_indices = torch.where(mask, seq_indices, torch.full_like(seq_indices, -1))  # (B, L)
-    last_indices = masked_indices.max(dim=1)[0]  # (B,)
-
-    return last_indices  # may contain -1
-
-
-class LlamaFuseConfig(LlamaConfig):
+class MistralFuseConfig(MistralConfig):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_experts = kwargs.get('num_experts', 3)
         self.residual = kwargs.get('residual', True)
         self.bit_flip = kwargs.get('bit_flip', True)
 
-@dataclass
-class CausalLMFuseOutputWithPast(CausalLMOutputWithPast):
-    past_inst_hidden_states: Optional[torch.FloatTensor] = None
-
-class LlamaModel(transformers.LlamaModel):
-    def __init__(self, config: LlamaConfig):
+class MistralModel(transformers.MistralModel):
+    def __init__(self, config: MistralConfig):
         super().__init__(config)
         self.config = config
         self.deinstruction_shift = nn.Linear(config.hidden_size, config.hidden_size, bias=True) # rotation+scale+shift
@@ -67,8 +47,10 @@ class LlamaModel(transformers.LlamaModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # retrieve input_ids and inputs_embeds
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError(
                 "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
@@ -76,7 +58,7 @@ class LlamaModel(transformers.LlamaModel):
 
         if self.gradient_checkpointing and self.training and use_cache:
             logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
             )
             use_cache = False
 
@@ -84,9 +66,9 @@ class LlamaModel(transformers.LlamaModel):
             inputs_embeds = self.embed_tokens(input_ids)
 
         return_legacy_cache = False
-        if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
-            return_legacy_cache = True
+        if use_cache and not isinstance(past_key_values, Cache):
             past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            return_legacy_cache = True
             logger.warning_once(
                 "We detected that you are passing `past_key_values` as a tuple and this is deprecated and will be removed in v4.43. "
                 "Please use an appropriate `Cache` class (https://huggingface.co/docs/transformers/v4.41.3/en/internal/generation_utils#transformers.Cache)"
@@ -97,16 +79,15 @@ class LlamaModel(transformers.LlamaModel):
             cache_position = torch.arange(
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
+
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
         causal_mask = self._update_causal_mask(
-            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
+            attention_mask, inputs_embeds, cache_position, past_key_values, use_cache, output_attentions
         )
-        hidden_states = inputs_embeds
 
-        # create position embeddings to be shared across the decoder layers
-        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        hidden_states = inputs_embeds
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -138,7 +119,6 @@ class LlamaModel(transformers.LlamaModel):
                     output_attentions,
                     use_cache,
                     cache_position,
-                    position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -149,7 +129,6 @@ class LlamaModel(transformers.LlamaModel):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
-                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]
@@ -172,7 +151,6 @@ class LlamaModel(transformers.LlamaModel):
 
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
-
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
@@ -181,13 +159,14 @@ class LlamaModel(transformers.LlamaModel):
         )
 
 
-class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
+
+class MistralForCausalLMFuse(transformers.MistralForCausalLM):
     _tied_weights_keys = ["lm_head.weight"]
 
-    def __init__(self, config: LlamaFuseConfig):
+    def __init__(self, config: MistralFuseConfig):
         super().__init__(config)
         del self.model
-        self.model      = LlamaModel(config)
+        self.model      = MistralModel(config)
         self.vocab_size = config.vocab_size
         self.vocab_size      = config.vocab_size
         self.hidden_size     = config.hidden_size
@@ -250,10 +229,10 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
                     past_inst_hidden_states = last_inst.clone().detach().cpu()
 
                 end_indices = _get_last_indices(self.response_label, expert_labels) # (B,)
-                end_state   = hidden_states[batch_idx, end_indices]  # (B, H)
+                end_state         = hidden_states[batch_idx, end_indices]  # (B, H)
 
                 # Add last instruction token's semantic as a residual connection to the 1st response token
-                fuse_factor  = torch.sigmoid(self.residual_weight)  # fixme: factor between 0 and 1
+                fuse_factor   = torch.sigmoid(self.residual_weight)  # fixme: factor between 0 and 1
                 fused_states = torch.lerp(end_state, last_inst, fuse_factor) # fixme: only last layer? (B, H)
 
                 mask2d = torch.zeros(batch_size, length, dtype=torch.bool, device=hidden_states.device)
@@ -263,14 +242,8 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
                 fused_states = fused_states.unsqueeze(1).expand(-1, length, -1) # expand mixed_states (B, H) → (B, L, H)
                 hidden_states = torch.where(mask3d, fused_states, hidden_states)
 
-        if self.config.pretraining_tp > 1:
-            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
-            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
-            logits = torch.cat(logits, dim=-1)
-        else:
-            hidden_states = hidden_states.to(self.lm_head.weight.dtype)
-            logits = self.lm_head(hidden_states)
-
+        hidden_states = hidden_states.to(self.lm_head.weight.dtype)
+        logits = self.lm_head(hidden_states)
         logits = logits.float()
 
         loss = None
@@ -279,11 +252,11 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
             shift_logits = shift_logits.view(-1, self.config.vocab_size)
             shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
+            # Ensure tensors are on the same device
             shift_labels = shift_labels.to(shift_logits.device)
+            loss_fct = CrossEntropyLoss()
             loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
@@ -377,10 +350,10 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         return model_kwargs
 
 
-class LlamaForCausalLMFuseV2(LlamaForCausalLMFuse):
+class MistralForCausalLMFuseV2(MistralForCausalLMFuse):
     _tied_weights_keys = ["lm_head.weight"]
 
-    def __init__(self, config: LlamaFuseConfig):
+    def __init__(self, config: MistralFuseConfig):
         super().__init__(config)
         del self.residual_weight
         self.down_proj = nn.Linear(config.hidden_size, config.hidden_size // 2)
@@ -442,30 +415,24 @@ class LlamaForCausalLMFuseV2(LlamaForCausalLMFuse):
                     last_inst         = hidden_states[batch_idx, last_inst_indices]  # (B, H)
                     past_inst_hidden_states = last_inst.clone().detach().cpu()
 
-                start_resp_indices = _get_last_indices(self.response_label, expert_labels) # (B,)
-                start_resp         = hidden_states[batch_idx, start_resp_indices]  # (B, H)
+                first_resp_indices = _get_last_indices(self.response_label, expert_labels) # (B,)
+                first_resp         = hidden_states[batch_idx, first_resp_indices]  # (B, H)
 
                 # fixme: Concat last instruction token's semantic to the 1st response token
-                last_inst       = last_inst.expand(batch_size, -1) # (B, H)
-                start_resp_down = self.down_proj(start_resp)
+                last_inst  = last_inst.expand(batch_size, -1) # (B, H)
+                first_resp_down = self.down_proj(first_resp)
                 last_inst_down  = self.down_proj(last_inst)
-                fused_states = torch.cat([start_resp_down, last_inst_down], dim=-1)  # (B, 2H)
+                fuse_inst_resp = torch.cat([first_resp_down, last_inst_down], dim=-1)  # (B, 2H)
 
                 mask2d = torch.zeros(batch_size, length, dtype=torch.bool, device=hidden_states.device)
-                mask2d[batch_idx, start_resp_indices] = True
+                mask2d[batch_idx, first_resp_indices] = True
                 mask3d = mask2d.unsqueeze(-1) # broadcast to (B, L, 1)
 
-                fused_states  = fused_states.unsqueeze(1).expand(-1, length, -1) # expand mixed_states (B,H) → (B, L, H)
+                fused_states  = fuse_inst_resp.unsqueeze(1).expand(-1, length, -1) # expand mixed_states (B,H) → (B, L, H)
                 hidden_states = torch.where(mask3d, fused_states, hidden_states)
 
-        if self.config.pretraining_tp > 1:
-            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
-            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
-            logits = torch.cat(logits, dim=-1)
-        else:
-            hidden_states = hidden_states.to(self.lm_head.weight.dtype)
-            logits = self.lm_head(hidden_states)
-
+        hidden_states = hidden_states.to(self.lm_head.weight.dtype)
+        logits = self.lm_head(hidden_states)
         logits = logits.float()
 
         loss = None
