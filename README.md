@@ -39,7 +39,7 @@ pip install -r requirements.txt
 When prompted, please specify the CUDA device ID (i.e. a single number) you want to run the model with.
 And also point to your saved model path.
 
-## NL injection attack
+## Natural language injection attack
 
 ```bash
 ./scripts/nl_injection1.sh
@@ -53,7 +53,7 @@ And also point to your saved model path.
 ./scripts/nl_injection3.sh
 ```
 
-## Gradient-based attack
+## Optimization-based attack
 
 ### GCG
 
