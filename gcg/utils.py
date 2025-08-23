@@ -27,7 +27,6 @@ class Role(Enum):
     ASSISTANT = 2
     SYSTEM = 3
 
-
 @dataclass
 class Message:
     role: Role
@@ -60,7 +59,7 @@ class SuffixManager:
     """Suffix manager for adversarial suffix generation."""
 
     valid_templates = (
-        "llama-3",
+        "llama3",
         "llama-2",
         "vicuna_v1.1",
         "mistral",
@@ -108,7 +107,7 @@ class SuffixManager:
             # Space is subsumed by following token in GPT tokenizer
             assert self.conv_template.sep == " ", self.conv_template.sep
             self.num_tok_sep = 0
-        elif self.conv_template.name == "llama-3":
+        elif self.conv_template.name == "llama3":
             # FastChat adds <|eot_id|> after each message, but it's not sep.
             # Not exactly sure why, but not we need to manually set
             # self.num_tok_sep because sep is just "".
@@ -224,16 +223,10 @@ class SuffixManager:
             self.conv_template.update_last_message(adv_suffix)
         """
 
-        # It seems that we do not need toks and self.conv_template after this function
-        # Thus, we can calculate toks by adding (user_msg, adv_suffix, '\n\n', self.conv_template.roles[1]) tokens directly
-        # instead of asking self.tokenizer to do self.tokenizer(self.conv_template.get_prompt()).input_ids
-        
-        #print('0', toks, self.tokenizer.decode(toks))
         toks = self.tokenizer(self.conv_template.get_prompt()).input_ids + \
                self.tokenizer(' ', add_special_tokens=False).input_ids + \
                self.tokenizer(adv_suffix, add_special_tokens=False).input_ids + \
                self.sep_tokens
-        #print('1', toks, self.tokenizer.decode(toks))#; exit() # the last ! is combined with \n or \n\n
         optim_slice = slice(num_static_tokens, len(toks) - self.num_tok_sep)
         
         toks = self.tokenizer(self.conv_template.get_prompt()).input_ids + \
@@ -242,9 +235,6 @@ class SuffixManager:
                self.sep_tokens + \
                self.tokenizer(self.conv_template.roles[1], add_special_tokens=False).input_ids + \
                self.tokenizer('\n', add_special_tokens=False).input_ids
-        #print('2', toks, self.tokenizer.decode(toks))
-        #self.conv_template.append_message(self.conv_template.roles[1], None)
-        #toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
         assistant_role_slice = slice(optim_slice.stop, len(toks))
 
         toks = self.tokenizer(self.conv_template.get_prompt()).input_ids + \
@@ -254,22 +244,9 @@ class SuffixManager:
                self.tokenizer(self.conv_template.roles[1], add_special_tokens=False).input_ids + \
                self.tokenizer('\n' + target, add_special_tokens=False).input_ids + \
                self.tokenizer(self.tokenizer.eos_token, add_special_tokens=False).input_ids
-        # self.tokenizer('\n', add_special_tokens=False).input_ids + \              
-        # self.tokenizer(target, add_special_tokens=False).input_ids
-        
-        #print('3', toks, self.tokenizer.decode(toks))#; exit()
-        #self.conv_template.update_last_message(target)  # asst target
-        #toks = self.tokenizer(self.conv_template.get_prompt()).input_ids
-        target_slice = slice(assistant_role_slice.stop, len(toks) - self.num_tok_sep2)
-        loss_slice = slice(assistant_role_slice.stop - 1, len(toks) - self.num_tok_sep2 - 1)
 
-        # DEBUG
-        #print('\'' + self.tokenizer.decode(toks[optim_slice]) + '\'')
-        #print('\'' + self.tokenizer.decode(toks[assistant_role_slice]) + '\'')
-        #print('\'' + self.tokenizer.decode(toks[target_slice]) + '\'')
-        #print('\'' + self.tokenizer.decode(toks[loss_slice]) + '\'')
-        #exit()
-        # import pdb; pdb.set_trace()
+        target_slice = slice(assistant_role_slice.stop,     len(toks) - self.num_tok_sep2)
+        loss_slice   = slice(assistant_role_slice.stop - 1, len(toks) - self.num_tok_sep2 - 1)
 
         # Don't need final sep tokens
         input_ids = torch.tensor(toks[: target_slice.stop])

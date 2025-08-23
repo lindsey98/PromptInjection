@@ -19,28 +19,6 @@ import difflib
 from dataclasses import dataclass, field
 from typing import List
 
-def jload_jsonl(f: Union[str, io.IOBase], mode: str = "r") -> list[dict]:
-    """
-    Load a JSONL file (one JSON object per line) into a list of dicts.
-    Accepts either a file path or an open file handle.
-    """
-    close_after = False
-    if not isinstance(f, io.IOBase):
-        f = open(f, mode=mode, encoding="utf-8")
-        close_after = True
-
-    data = []
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
-        data.append(json.loads(line))
-
-    if close_after:
-        f.close()
-
-    return data
-
 def jload(f, mode="r"):
     if not isinstance(f, io.IOBase):
         f = open(f, mode=mode)
@@ -190,21 +168,10 @@ def compute_expert_labels(seq, user_inst_seperator, data_seperator, response_sep
 
     else:
         raise ValueError("num_labels must be either 3 or 4")
-    # else:
-        # 计算分隔符长度
-        # if isinstance(response_seperator, list):
-        #     sep_ids = torch.tensor(response_seperator, device=seq.device, dtype=seq.dtype)
-        # else:
-        #     sep_ids = response_seperator.to(seq.device)
-        # n_sep = sep_ids.numel()
-        #
-        # seq[-n_sep:] = sep_ids  # 用分隔符替换 seq 最后 n_sep 个 token
-
-        # expert_this[-n_sep:] = num_labels-1  # 把 expert_this 最后 n_sep 个位置标记为 response (2)
 
     return expert_this
 
-def _tokenize_fn(strings, tokenizer, frontend_delimiters='SpclSpclSpcl', compute_gate=False, add_special_tokens=True):
+def _tokenize_fn(strings, tokenizer, frontend_delimiters, compute_gate=False, add_special_tokens=True):
     tokenized_list = [
         tokenizer(
             text,
@@ -261,12 +228,14 @@ def preprocess(sources, targets, frontend_delimiters, tokenizer):
     examples = [s + t for s, t in zip(sources, targets)]
 
     # input + responses
-    examples_tokenized = _tokenize_fn(examples, tokenizer, frontend_delimiters=frontend_delimiters, compute_gate=True)
+    examples_tokenized = _tokenize_fn(examples, tokenizer,
+                                      frontend_delimiters=frontend_delimiters, compute_gate=True)
     input_ids     = examples_tokenized["input_ids"]
     expert_labels = examples_tokenized["expert_labels"]
 
     # input only => find the input length
-    sources_lengths = _tokenize_fn(sources, tokenizer, frontend_delimiters=frontend_delimiters, compute_gate=False)["input_ids_lens"]
+    sources_lengths = _tokenize_fn(sources, tokenizer,
+                                   frontend_delimiters=frontend_delimiters, compute_gate=False)["input_ids_lens"]
 
     labels = deepcopy(input_ids)
     for label, source_len in zip(labels, sources_lengths):
@@ -278,7 +247,7 @@ def preprocess(sources, targets, frontend_delimiters, tokenizer):
 
 
 class SupervisedDataset(Dataset):
-    def __init__(self, data_path_list: List[str], tokenizer, attack, frontend_delimiters="SpclSpclSpcl", downsample=True):
+    def __init__(self, data_path_list: List[str], tokenizer, attack, frontend_delimiters, downsample=True):
         super(SupervisedDataset, self).__init__()
 
         prompt_dict_name, attacks = attack.split('_')
@@ -287,21 +256,22 @@ class SupervisedDataset(Dataset):
         self.labels = []
         self.expert_labels = []
         self.data_source = []
-        self.data_copy_count = 1
 
         for data_path in data_path_list:
             logging.warning(f"Loading data {data_path}")
 
             list_data_dict = jload(data_path)
 
-            source_clean, targets_clean = generate_training_data(list_data_dict, prompt_dict_name, 'None', frontend_delimiters, tokenizer)
-        
+            source_clean, targets_clean = generate_training_data(list_data_dict, prompt_dict_name,
+                                                                 'None', frontend_delimiters, tokenizer)
+
             if attacks == 'None':
                 sources, targets = source_clean, targets_clean
+                self.data_copy_count = 1
             else:
-                attacks = re.findall('[A-Z][^A-Z]*', attacks)
                 sources = []
                 targets = []
+                attacks = re.findall('[A-Z][^A-Z]*', attacks)
                 self.data_copy_count = len(attacks) + len(attacks) * downsample
 
                 for a in attacks:
@@ -311,11 +281,13 @@ class SupervisedDataset(Dataset):
                     if downsample:
                         sources += source_clean
                         targets += targets_clean
+                print(f"Constructed length of data = {len(sources)}")
 
             # downsize data to original size with 50% clean data
             if downsample:
                 sample_batch_id = np.random.choice(range(self.data_copy_count), len(source_clean))
                 sample_id = [(x * len(sample_batch_id) + i) for i, x in enumerate(sample_batch_id)]
+                print(f"Down-sampled length of data = {len(sample_id)}")
                 sources = np.array(sources)[sample_id].tolist()
                 targets = np.array(targets)[sample_id].tolist()
             else:
@@ -333,7 +305,7 @@ class SupervisedDataset(Dataset):
 
         # Mix the dataset
         combined = np.arange(len(self.input_ids))
-        # np.random.shuffle(combined)
+        # np.random.shuffle(combined) # fixme: I didnt shuffle
 
         # Apply permutation using numpy for better performance
         self.input_ids = [self.input_ids[i] for i in combined]
@@ -384,8 +356,7 @@ class DataCollatorForSupervisedDataset(object):
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
         )
-        # print(input_ids)
-        # exit()
+
         expert_labels = torch.nn.utils.rnn.pad_sequence(
             expert_labels, batch_first=True, padding_value=2
         ) # pad the sequence with 2? (response)
@@ -423,8 +394,8 @@ def smart_tokenizer_and_embedding_resize(
     REAL_DELIMITERS_INIT_EMBD_IND, _ = get_embedding_indices(tokenizer) # get embeddings for ['instruction', 'input',  'response', '###',  ':']
 
     if num_new_tokens > 0:
-        input_embeddings = model.get_input_embeddings().weight.data
-        output_embeddings = model.get_output_embeddings().weight.data
+        input_embeddings = model.get_input_embeddings().weight.clean_data
+        output_embeddings = model.get_output_embeddings().weight.clean_data
 
         input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
         output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)

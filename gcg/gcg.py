@@ -8,7 +8,6 @@
 import numpy as np
 import torch
 from ml_collections import ConfigDict
-
 from gcg.base import BaseAttack
 from gcg.eval_input import EvalInput
 from gcg.types import BatchTokenIds
