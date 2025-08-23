@@ -1,9 +1,9 @@
 import fastchat
+from fastchat.conversation import register_conv_template, Conversation, SeparatorStyle
 from ml_collections import config_dict
 from config import (
     DELIMITERS,
     PROMPT_FORMAT,
-    SYS_INPUT,
     TEST_INJECTED_PROMPT,
     TEST_INJECTED_WORD,
 )
@@ -107,8 +107,10 @@ def gcg(d_item, attack, cfg, data_delm):
     )
     try:
         adv_suffix = attack.run(
-            messages=[Message(Role.SYSTEM, SYS_INPUT),
-             Message(Role.USER, prompt_no_sys)],
+            messages=[
+                Message(Role.SYSTEM, ""),
+                Message(Role.USER, prompt_no_sys)
+            ],
             target=TEST_INJECTED_WORD.lower()
         ).best_suffix
     except LengthMismatchError:
@@ -137,16 +139,12 @@ if __name__ == "__main__":
 
     prompt_format = PROMPT_FORMAT[frontend_delimiters]
     model_path = args.model_name_or_path
-    a = "gcg"
     log_path = f"{model_path}-log" if not os.path.exists(model_path) else model_path
-    attack_log_file = os.path.join(log_path, f"{a}-{args.defense}-{TEST_INJECTED_WORD}.csv")
+    attack_log_file = os.path.join(log_path, f"gcg-{args.defense}-{TEST_INJECTED_WORD}.csv")
     summary_path = os.path.join(log_path, "summary.tsv")
 
-
     prompt_template = PROMPT_FORMAT[frontend_delimiters]["prompt_input"]
-    inst_delm = DELIMITERS[frontend_delimiters][0]
-    data_delm = DELIMITERS[frontend_delimiters][1]
-    resp_delm = DELIMITERS[frontend_delimiters][2]
+    inst_delm, data_delm, resp_delm = DELIMITERS[frontend_delimiters]
     args.inst_seperator = tokenizer(inst_delm,
                                    return_tensors="pt",
                                    padding=False,
@@ -163,21 +161,38 @@ if __name__ == "__main__":
                                    truncation=False,
                                    add_special_tokens=False).input_ids[0]  # starting delimiter of response
 
-    fastchat.conversation.register_conv_template(
-        CustomConversation(
-            name="struq",
-            system_message=SYS_INPUT,
-            roles=(inst_delm, resp_delm),
-            sep="\n\n",
-            sep2="</s>",
+    if "struq" in model_path or "secalign" in model_path:
+        fastchat.conversation.register_conv_template(
+            CustomConversation(
+                name="struq",
+                system_message="",
+                roles=(inst_delm, resp_delm),
+                sep="\n\n",
+                sep2="</s>",
+            )
         )
-    )
 
-    suffix_manager = SuffixManager(
-        tokenizer=tokenizer,
-        use_system_instructions=False,
-        conv_template=fastchat.conversation.get_conv_template("struq"),
-    )
+        suffix_manager = SuffixManager(
+            tokenizer=tokenizer,
+            use_system_instructions=False,
+            conv_template=fastchat.conversation.get_conv_template("struq"),
+        )
+    else:
+        fastchat.conversation.register_conv_template(
+            CustomConversation(
+                name="llama3",
+                system_message="",
+                roles=(inst_delm, resp_delm),
+                sep="\n\n",
+                sep2="<|eot_id|>",
+            )
+        )
+
+        suffix_manager = SuffixManager(
+            tokenizer=tokenizer,
+            use_system_instructions=False,
+            conv_template=fastchat.conversation.get_conv_template("llama3"),
+        )
 
     cfg = setup_gcg_configs(args)
     attack = GCGAttack(
@@ -214,14 +229,14 @@ if __name__ == "__main__":
         begin_with  += sample_begin_with
         total += 1
         print(
-            f"\n{a} success rate {in_response/total} / {begin_with/total} / {exact_equal/total} (in-response / begin_with / exact_equal) on {args.model_name_or_path}, "
+            f"\nGCG success rate {in_response/total} / {begin_with/total} / {exact_equal/total} (in-response / begin_with / exact_equal) on {args.model_name_or_path}, "
             f"delimiters {frontend_delimiters}, "
             f"training-attacks {training_attacks},"
             f"zero-shot defense {args.defense}\n"
         )
 
     with open(summary_path, "a") as outfile:
-        outfile.write(f"{a}\t{in_response}\t{begin_with}\t{args.defense}_{TEST_INJECTED_WORD}\n")
+        outfile.write(f"GCG\t{in_response}\t{begin_with}\t{args.defense}_{TEST_INJECTED_WORD}\n")
 
 
 
