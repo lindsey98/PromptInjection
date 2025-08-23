@@ -17,14 +17,12 @@ logger = logging.get_logger(__name__)
 
 def _get_last_indices(label_index: int, expert_labels: torch.LongTensor) -> torch.LongTensor:
     batch_size, seq_len = expert_labels.shape
-
     mask = (expert_labels == label_index)  # (B, L)
     seq_indices = torch.arange(seq_len, device=expert_labels.device).unsqueeze(0)  # (1, L)
-
+    all_negative_one = torch.full_like(seq_indices, -1)
     # set non-equal positions to -1
-    masked_indices = torch.where(mask, seq_indices, torch.full_like(seq_indices, -1))  # (B, L)
+    masked_indices = torch.where(mask, seq_indices, all_negative_one)  # (B, L)
     last_indices = masked_indices.max(dim=1)[0]  # (B,)
-
     return last_indices  # may contain -1
 
 
@@ -44,7 +42,9 @@ class LlamaModel(transformers.LlamaModel):
         super().__init__(config)
         self.config = config
         self.deinstruction_shift = nn.Linear(config.hidden_size, config.hidden_size, bias=True) # rotation+scale+shift
+        self.instruct_label  = 0
         self.data_label = 1
+        self.residual_weight = nn.Parameter(torch.tensor([-1.0986])) # 0.5 weight assigned to the last instruction token
         self.post_init()
 
     def forward(
@@ -66,7 +66,7 @@ class LlamaModel(transformers.LlamaModel):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        use_cache   = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if (input_ids is None) ^ (inputs_embeds is not None):
@@ -110,17 +110,19 @@ class LlamaModel(transformers.LlamaModel):
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
+        all_self_attns    = () if output_attentions else None
         next_decoder_cache = None
 
         for layer_idx, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            # one-bit flip for LAST attention's input
+            # one-bit flip for FIRST attention's input
             if self.config.bit_flip and layer_idx == 0:
                 inst_mask_2d = (expert_labels == self.data_label)  # B, L
                 inst_mask_3d = inst_mask_2d.unsqueeze(-1).expand_as(hidden_states)
+
+                ## v1
                 shifted_states = self.deinstruction_shift(hidden_states) # why having different shifts for different samples?
                 hidden_states  = torch.where(
                     inst_mask_3d,
@@ -192,7 +194,7 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         self.vocab_size      = config.vocab_size
         self.hidden_size     = config.hidden_size
         self.lm_head         = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.residual_weight = nn.Parameter(torch.tensor(0.01)) # 0.5 weight assigned to the last instruction token
+        self.residual_weight = nn.Parameter(torch.tensor([0.01])) # 0.5 weight assigned to the last instruction token
         self.response_label  = 2
         self.instruct_label  = 0
         self.post_init()
@@ -310,9 +312,6 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         use_cache=True,
         **kwargs,
     ):
-        # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
-        # Exception 1: when passing input_embeds, input_ids may be missing entries
-        # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
         expert_labels = None
         if "expert_labels" in kwargs:
             expert_labels = kwargs["expert_labels"]

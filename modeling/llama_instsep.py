@@ -17,26 +17,18 @@ logger = logging.get_logger(__name__)
 class LlamaMoEConfig(LlamaConfig):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.apply_input_shifts        = kwargs.get('apply_input_shifts', True)
+        self.apply_input_shifts = kwargs.get('apply_input_shifts', True)
         self.apply_intermediate_shifts = kwargs.get('apply_intermediate_shifts', False)
-        self.num_blocks_with_shifts    = kwargs.get('num_blocks_with_shifts', 1)
+        self.num_blocks_with_shifts = kwargs.get('num_blocks_with_shifts', 1)
         self.num_experts = kwargs.get('num_experts', 3)
-        self.d_gap       = kwargs.get('d_gap', 512)
+        self.d_gap = kwargs.get('d_gap', 512)
+        assert self.num_experts > 0, "num_experts must be > 0"
 
 class LlamaModel(transformers.LlamaModel):
-    """
-    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
-
-    Args:
-        config: LlamaConfig
-    """
-
     def __init__(self, config: LlamaMoEConfig):
         super().__init__(config)
         del self.layers
-        self.layers = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
-        )
+        self.layers = nn.ModuleList([LlamaDecoderLayer(config, i) for i in range(config.num_hidden_layers)])
         self.apply_input_shifts = config.apply_input_shifts
         self.input_shifts = nn.Embedding(config.num_experts, config.hidden_size)
 
@@ -51,8 +43,8 @@ class LlamaModel(transformers.LlamaModel):
         self.custom_initialize()
 
     def custom_initialize(self):
-        nn.init.normal_(self.input_shifts.weight, mean=0, std=0.01)
-        nn.init.normal_(self.intermediate_shifts.weight, mean=0, std=0.01)
+        nn.init.normal_(self.input_shifts.weight, mean=0, std=0.001)
+        nn.init.normal_(self.intermediate_shifts.weight, mean=0, std=0.001)
 
     def enable_hidden_state_tracking(self):
         self.track_hidden_states = True
