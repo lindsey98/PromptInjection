@@ -5,6 +5,8 @@ defaults:
 llm_params:
   model_name: "tiny_llama"
   checkpoint: 'TinyLlama/TinyLlama-1.1B-step-50K-105b'
+  customized_model_class: null
+  pass_expert_labels: null
   lora_params:
     warmstart: false
     lora_checkpoint: null
@@ -16,6 +18,7 @@ llm_params:
         - q_proj
         - v_proj
         - lm_head
+
 prompt_manager:
   prompt_template: 
     - key: system_message

@@ -7,14 +7,4 @@ allow_non_ascii: true
 gen_params:
   max_new_tokens: 150
   do_sample: false
-prompt_manager:
-  prompt_template:
-    - key: system_message
-      # msg: "<s>[INST] <<SYS>>\nThis is a system message.\n<</SYS>>\n\n"
-      msg: "\n\n" #"<s>[INST]"
-    - key: full_instruct
-      msg: "{full_instruct}"  # loaded from context
-    - key: separator
-      msg: "\n\n[/INST]\n" #"[/INST]"
-    - key: target
-      msg: "{target}"  # loaded from context
+
