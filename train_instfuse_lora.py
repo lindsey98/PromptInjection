@@ -5,26 +5,20 @@
 
 import transformers
 from transformers import Trainer
-import torch
-from train import smart_tokenizer_and_embedding_resize, ModelArguments, DataArguments, TrainingArguments, AttackArguments, find_closest_match
-from config import DEFAULT_TOKENS, SPECIAL_DELM_TOKENS, DELIMITERS
+from train import ModelArguments, DataArguments, TrainingArguments, AttackArguments
 from transformers.utils import logging
-from modeling.llama_instfuse import LlamaForCausalLMFuse, LlamaForCausalLMFuseV2, LlamaFuseConfig
+from modeling.llama_instfuse import LlamaForCausalLMFuse, LlamaFuseConfig
 import os
 from data_generation.struq import jload, make_supervised_data_module
 from peft import LoraConfig, get_peft_model
 from transformers.trainer import PreTrainedModel, is_sagemaker_mp_enabled, Adafactor, is_bitsandbytes_available
-from transformers.training_args import OptimizerNames
 from typing import Optional, Tuple, Any, List
 from torch import nn
-import torch
-import importlib.metadata
-from packaging import version
 
 logger = logging.get_logger(__name__)
 os.environ["WANDB_WATCH"]="all" # log all parameters gradients
 
-class MyTrainer(Trainer):
+class InstFuseTrainer(Trainer):
     def create_optimizer(self):
 
         opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
@@ -39,7 +33,7 @@ class MyTrainer(Trainer):
                         if any(kw in n for kw in special_params_list) and p.requires_grad
                     ],
                     "weight_decay": 0.0,
-                    "lr": self.args.learning_rate * 10,
+                    "lr": self.args.learning_rate * 10, ## move 10 times faster
                 },
                 {
                     "params": [
@@ -100,8 +94,8 @@ def train():
         model_args.model_name_or_path,
     )
 
-    config.residual = True
-    config.bit_flip = True
+    # config.residual = True
+    # config.bit_flip = True
 
     model = LlamaForCausalLMFuse.from_pretrained(
         model_args.model_name_or_path,
@@ -142,7 +136,7 @@ def train():
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 
-    trainer = MyTrainer(
+    trainer = InstFuseTrainer(
         model=peft_model,
         tokenizer=tokenizer,
         args=training_args,

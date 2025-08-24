@@ -11,7 +11,7 @@ DELIMITER="TextTextText"
 
 SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-origdata"
 
-BATCH_SIZE=6
+BATCH_SIZE=4
 EPOCH=1
 
 http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \

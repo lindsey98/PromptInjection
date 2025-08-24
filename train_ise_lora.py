@@ -1,6 +1,5 @@
 import transformers
-from train import smart_tokenizer_and_embedding_resize, ModelArguments, DataArguments, TrainingArguments, AttackArguments, find_closest_match
-from config import DEFAULT_TOKENS, SPECIAL_DELM_TOKENS, DELIMITERS
+from train import smart_tokenizer_and_embedding_resize, ModelArguments, DataArguments, TrainingArguments, AttackArguments
 from transformers import Trainer
 from transformers.utils import logging
 from modeling.llama_instsep import LlamaForCausalLMMoE, LlamaMoEConfig, LlamaForCausalLMMoEV2
@@ -8,16 +7,12 @@ from data_generation.struq import jload, make_supervised_data_module
 from peft import LoraConfig, get_peft_model
 import os
 from transformers.trainer import PreTrainedModel, is_sagemaker_mp_enabled, Adafactor, is_bitsandbytes_available
-from transformers.training_args import OptimizerNames
 from typing import Optional, Tuple, Any, List
 from torch import nn
-import torch
-import importlib.metadata
-from packaging import version
 logger = logging.get_logger(__name__)
 os.environ["WANDB_WATCH"]="all" # log all parameters gradients
 
-class MyTrainer(Trainer):
+class ISETrainer(Trainer):
 
     def create_optimizer(self):
         opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
@@ -135,7 +130,7 @@ def train():
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 
-    trainer = MyTrainer(
+    trainer = ISETrainer(
         model=peft_model,
         tokenizer=tokenizer,
         args=training_args,

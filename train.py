@@ -8,11 +8,9 @@ from typing import Dict, Optional, Sequence, List
 import torch
 import transformers
 import trl
-from data_generation.struq import SupervisedDataset, smart_tokenizer_and_embedding_resize, make_supervised_data_module_orig, find_closest_match
-from config import IGNORE_INDEX, DEFAULT_TOKENS, SPECIAL_DELM_TOKENS, TEXTUAL_DELM_TOKENS, DELIMITERS
-import difflib
+from data_generation.struq import smart_tokenizer_and_embedding_resize, make_supervised_data_module_orig
+from config import DEFAULT_TOKENS, SPECIAL_DELM_TOKENS
 from peft import LoraConfig, get_peft_model
-import os
 
 @dataclass
 class ModelArguments: 
@@ -29,10 +27,10 @@ class DataArguments:
 
 @dataclass
 class AttackArguments: 
-    attack:    str = field(default='TextTextText_None', metadata={"help": "Attack type for SFT/Align"})
+    attack: str = field(default='TextTextText_None', metadata={"help": "Attack type for SFT/Align"})
 
 @dataclass
-class TrainingArguments(trl.ORPOConfig): #transformers.TrainingArguments): #
+class TrainingArguments(trl.ORPOConfig):
     cache_dir: Optional[str] = field(default=None)
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(

@@ -34,5 +34,5 @@ python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_
   --attack "${DELIMITER}_None" \
   --model_max_length 512 \
   --dataloader_num_workers 4 \
-  --fsdp_transformer_layer_cls_to_wrap "LlamaDecoderLayer" \
-  --fsdp "full_shard auto_wrap"
+  --fsdp "full_shard auto_wrap" \
+  --fsdp_config "$FSDP_CONFIG"

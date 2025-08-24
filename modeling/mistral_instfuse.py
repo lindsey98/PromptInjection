@@ -6,10 +6,10 @@ from modeling.llama_instfuse import _get_last_indices, CausalLMFuseOutputWithPas
 from transformers.utils import logging
 from typing import Union, Optional, Tuple, List, Dict, Any
 from torch import nn
-from transformers.modeling_outputs import CausalLMOutputWithPast, BaseModelOutputWithPast, ModelOutput
+from transformers.modeling_outputs import BaseModelOutputWithPast, ModelOutput
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
-import torch.nn.functional as F
+from dataclasses import dataclass
 logger = logging.get_logger(__name__)
 
 class MistralFuseConfig(MistralConfig):
@@ -19,12 +19,15 @@ class MistralFuseConfig(MistralConfig):
         self.residual = kwargs.get('residual', True)
         self.bit_flip = kwargs.get('bit_flip', True)
 
+
 class MistralModel(transformers.MistralModel):
     def __init__(self, config: MistralConfig):
         super().__init__(config)
         self.config = config
         self.deinstruction_shift = nn.Linear(config.hidden_size, config.hidden_size, bias=True) # rotation+scale+shift
+        self.instruct_label = 0
         self.data_label = 1
+        self.residual_weight = nn.Parameter(torch.tensor([-1.0986]))  # 0.5 weight assigned to the last instruction token
         self.post_init()
 
     def forward(
@@ -47,10 +50,8 @@ class MistralModel(transformers.MistralModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError(
                 "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
@@ -67,8 +68,8 @@ class MistralModel(transformers.MistralModel):
 
         return_legacy_cache = False
         if use_cache and not isinstance(past_key_values, Cache):
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
             return_legacy_cache = True
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
             logger.warning_once(
                 "We detected that you are passing `past_key_values` as a tuple and this is deprecated and will be removed in v4.43. "
                 "Please use an appropriate `Cache` class (https://huggingface.co/docs/transformers/v4.41.3/en/internal/generation_utils#transformers.Cache)"
@@ -79,15 +80,16 @@ class MistralModel(transformers.MistralModel):
             cache_position = torch.arange(
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
-
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
         causal_mask = self._update_causal_mask(
             attention_mask, inputs_embeds, cache_position, past_key_values, use_cache, output_attentions
         )
-
         hidden_states = inputs_embeds
+
+        # create position embeddings to be shared across the decoder layers
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -102,6 +104,8 @@ class MistralModel(transformers.MistralModel):
             if self.config.bit_flip and layer_idx == 0:
                 inst_mask_2d = (expert_labels == self.data_label)  # B, L
                 inst_mask_3d = inst_mask_2d.unsqueeze(-1).expand_as(hidden_states)
+
+                ## v1
                 shifted_states = self.deinstruction_shift(hidden_states) # why having different shifts for different samples?
                 hidden_states  = torch.where(
                     inst_mask_3d,
@@ -119,6 +123,7 @@ class MistralModel(transformers.MistralModel):
                     output_attentions,
                     use_cache,
                     cache_position,
+                    position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -129,6 +134,7 @@ class MistralModel(transformers.MistralModel):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]
@@ -151,13 +157,13 @@ class MistralModel(transformers.MistralModel):
 
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=next_cache,
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
         )
-
 
 
 class MistralForCausalLMFuse(transformers.MistralForCausalLM):
@@ -283,9 +289,6 @@ class MistralForCausalLMFuse(transformers.MistralForCausalLM):
         use_cache=True,
         **kwargs,
     ):
-        # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
-        # Exception 1: when passing input_embeds, input_ids may be missing entries
-        # Exception 2: some generation methods do special slicing of input_ids, so we don't need to do it here
         expert_labels = None
         if "expert_labels" in kwargs:
             expert_labels = kwargs["expert_labels"]
@@ -415,20 +418,19 @@ class MistralForCausalLMFuseV2(MistralForCausalLMFuse):
                     last_inst         = hidden_states[batch_idx, last_inst_indices]  # (B, H)
                     past_inst_hidden_states = last_inst.clone().detach().cpu()
 
-                first_resp_indices = _get_last_indices(self.response_label, expert_labels) # (B,)
-                first_resp         = hidden_states[batch_idx, first_resp_indices]  # (B, H)
+                start_resp_indices = _get_last_indices(self.response_label, expert_labels) # (B,)
+                start_resp         = hidden_states[batch_idx, start_resp_indices]  # (B, H)
 
-                # fixme: Concat last instruction token's semantic to the 1st response token
-                last_inst  = last_inst.expand(batch_size, -1) # (B, H)
-                first_resp_down = self.down_proj(first_resp)
-                last_inst_down  = self.down_proj(last_inst)
-                fuse_inst_resp = torch.cat([first_resp_down, last_inst_down], dim=-1)  # (B, 2H)
+                last_inst = last_inst.expand(batch_size, -1)  # (B, H)
+                start_resp_down = self.down_proj(start_resp)
+                last_inst_down = self.down_proj(last_inst)
+                fused_states = torch.cat([start_resp_down, last_inst_down], dim=-1)  # (B, 2H)
 
                 mask2d = torch.zeros(batch_size, length, dtype=torch.bool, device=hidden_states.device)
-                mask2d[batch_idx, first_resp_indices] = True
-                mask3d = mask2d.unsqueeze(-1) # broadcast to (B, L, 1)
+                mask2d[batch_idx, start_resp_indices] = True
+                mask3d = mask2d.unsqueeze(-1)  # broadcast to (B, L, 1)
 
-                fused_states  = fuse_inst_resp.unsqueeze(1).expand(-1, length, -1) # expand mixed_states (B,H) → (B, L, H)
+                fused_states = fused_states.unsqueeze(1).expand(-1, length, -1)  # expand mixed_states (B,H) → (B, L, H)
                 hidden_states = torch.where(mask3d, fused_states, hidden_states)
 
         hidden_states = hidden_states.to(self.lm_head.weight.dtype)

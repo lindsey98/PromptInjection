@@ -8,6 +8,7 @@ from torch import nn
 from transformers.modeling_outputs import CausalLMOutputWithPast, BaseModelOutputWithPast
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
 import torch.nn.functional as F
 from functools import partial
 logger = logging.get_logger(__name__)
@@ -20,10 +21,13 @@ class MistralMoEConfig(MistralConfig):
         self.num_blocks_with_shifts    = kwargs.get('num_blocks_with_shifts', 1)
         self.num_experts = kwargs.get('num_experts', 3)
         self.d_gap       = kwargs.get('d_gap', 512)
+        assert self.num_experts > 0, "num_experts must be > 0"
 
 class MistralModel(transformers.MistralModel):
     def __init__(self, config: MistralMoEConfig):
         super().__init__(config)
+        del self.layers
+        self.layers = nn.ModuleList([MistralDecoderLayer(config, i) for i in range(config.num_hidden_layers)])
         self.apply_input_shifts = config.apply_input_shifts
         self.input_shifts = nn.Embedding(config.num_experts, config.hidden_size)
 
@@ -38,8 +42,8 @@ class MistralModel(transformers.MistralModel):
         self.custom_initialize()
 
     def custom_initialize(self):
-        nn.init.normal_(self.input_shifts.weight, mean=0, std=0.01)
-        nn.init.normal_(self.intermediate_shifts.weight, mean=0, std=0.01)
+        nn.init.normal_(self.input_shifts.weight, mean=0, std=0.001)
+        nn.init.normal_(self.intermediate_shifts.weight, mean=0, std=0.001)
 
     def enable_hidden_state_tracking(self):
         self.track_hidden_states = True
@@ -115,6 +119,9 @@ class MistralModel(transformers.MistralModel):
             if self.track_hidden_states:
                 self.hook[f'after_input_shift'] = hidden_states.detach().clone()
 
+        # create position embeddings to be shared across the decoder layers
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -135,6 +142,7 @@ class MistralModel(transformers.MistralModel):
                     output_attentions,
                     use_cache,
                     cache_position,
+                    position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -146,6 +154,7 @@ class MistralModel(transformers.MistralModel):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]
@@ -319,6 +328,10 @@ class MistralModelV2(transformers.MistralModel):
 
     def __init__(self, config: MistralMoEConfig):
         super().__init__(config)
+        del self.layers
+        self.layers = nn.ModuleList(
+            [MistralDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+        )
         self.d_gap = config.d_gap
         self.post_init()
 
@@ -381,7 +394,9 @@ class MistralModelV2(transformers.MistralModel):
         hidden_states = inputs_embeds
 
         ## Add gap in positional embedding
-        position_ids = position_ids + self.d_gap * expert_labels.to(hidden_states.dtype)
+        position_ids        = position_ids + self.d_gap * expert_labels.to(hidden_states.dtype)
+        # create position embeddings to be shared across the decoder layers
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -402,6 +417,7 @@ class MistralModelV2(transformers.MistralModel):
                     output_attentions,
                     use_cache,
                     cache_position,
+                    position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -412,6 +428,7 @@ class MistralModelV2(transformers.MistralModel):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]

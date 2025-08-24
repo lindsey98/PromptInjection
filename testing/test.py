@@ -40,20 +40,12 @@ def load_model_and_tokenizer(base_model_path,
                              customized_model_class,
                              tokenizer_path=None,
                              device_map: Optional[int]=None, **kwargs):
-    '''
-    Load full model
-    :param base_model_path:
-    :param trained_model_path:
-    :param customized_model_class:
-    :param tokenizer_path:
-    :param device:
-    :param kwargs:
-    :return:
-    '''
+
     tokenizer_path = trained_model_path if tokenizer_path is None else tokenizer_path
-    tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path, use_fast=False)
+    tokenizer      = transformers.AutoTokenizer.from_pretrained(tokenizer_path, use_fast=False, use_auth_token=True)
     tokenizer.model_max_length = 512  ### the default value is too large for model.generation_config.max_new_tokens
     tokenizer.pad_token = tokenizer.eos_token
+
     if device_map is None:
         device_map = "auto"
     else:
@@ -63,19 +55,19 @@ def load_model_and_tokenizer(base_model_path,
         try:
             if customized_model_class == "LlamaForCausalLMFuse":
                 config = LlamaFuseConfig.from_pretrained(trained_model_path)
-                model = LlamaForCausalLMFuse.from_pretrained(trained_model_path,
+                model  = LlamaForCausalLMFuse.from_pretrained(trained_model_path,
                                                              config=config,
                                                              torch_dtype=torch.float16,
                                                              device_map=device_map)
             elif customized_model_class == "LlamaForCausalLMMoE":
                 config = LlamaMoEConfig.from_pretrained(trained_model_path)
-                model = LlamaForCausalLMMoE.from_pretrained(trained_model_path,
+                model  = LlamaForCausalLMMoE.from_pretrained(trained_model_path,
                                                             config=config,
                                                             torch_dtype=torch.float16,
                                                             device_map=device_map)
             elif customized_model_class == "LlamaForCausalLMMoEV2":
                 config = LlamaMoEConfig.from_pretrained(trained_model_path)
-                model = LlamaForCausalLMMoEV2.from_pretrained(trained_model_path,
+                model  = LlamaForCausalLMMoEV2.from_pretrained(trained_model_path,
                                                               config=config,
                                                               torch_dtype=torch.float16,
                                                               device_map=device_map)
@@ -95,13 +87,12 @@ def load_model_and_tokenizer(base_model_path,
             logger.error(f"Error loading custom model class {customized_model_class} from {trained_model_path}: {e}")
             raise
     elif ("secalign" in trained_model_path) or ("struq" in trained_model_path):
-        del tokenizer
-        tokenizer = transformers.AutoTokenizer.from_pretrained(trained_model_path, use_fast=False)
         model = transformers.AutoModelForCausalLM.from_pretrained(
             base_model_path,
             torch_dtype=torch.float16,
             device_map=device_map,
             low_cpu_mem_usage=True,
+            use_auth_token=True,
         )
         special_tokens_dict = dict()
         special_tokens_dict["pad_token"] = DEFAULT_TOKENS['pad_token']  ###
@@ -121,6 +112,7 @@ def load_model_and_tokenizer(base_model_path,
                 torch_dtype=torch.float16,
                 device_map=device_map,
                 low_cpu_mem_usage=True,
+                use_auth_token=True
             )
         except Exception as e:
             logger.error(f"Error loading standard model from {trained_model_path}: {e}")
@@ -131,20 +123,15 @@ def load_model_and_tokenizer(base_model_path,
     return model, tokenizer
 
 def load_full_model(model_name_or_path, customized_model_class, load_model=True, device_map: Optional[int]=None):
-    '''
-    Load full model then the lora adapter
-    :param model_name_or_path:
-    :param customized_model_class:
-    :param load_model:
-    :return:
-    '''
+
     base_model_path = model_name_or_path.split("-SpclSpclSpcl")[0].split("-TextTextText")[0]
+
     if "SpclSpclSpcl" in model_name_or_path:
         frontend_delimiters = "SpclSpclSpcl"
     elif "TextTextText" in model_name_or_path:
         frontend_delimiters = "TextTextText"
     else:
-        frontend_delimiters = model_name_or_path.split("/")[1]
+        frontend_delimiters = "TextTextText"
     training_attacks = "NaiveCompletion"
 
     if not load_model:
@@ -155,6 +142,7 @@ def load_full_model(model_name_or_path, customized_model_class, load_model=True,
                                                 customized_model_class=customized_model_class,
                                                 device_map=device_map)
     model.generation_config.pad_token_id = tokenizer.pad_token_id
+
     return model, tokenizer, frontend_delimiters, training_attacks
 
 
@@ -261,7 +249,8 @@ def form_llm_input(data, injection_method, prompt_format, apply_defensive_filter
 
 
 @torch.inference_mode()
-def test_model_output(llm_inputs, model, tokenizer, frontend_delimiters, attack_log_file=None, pass_expert_labels=False, print_results=False):
+def test_model_output(llm_inputs, model, tokenizer,
+                      frontend_delimiters, attack_log_file=None, pass_expert_labels=False, print_results=False):
     '''
     Efficiently test model outputs in mini-batches to avoid memory overflow.
     '''
@@ -277,7 +266,7 @@ def test_model_output(llm_inputs, model, tokenizer, frontend_delimiters, attack_
         tokenizer.convert_tokens_to_ids("<|eot_id|>")
     ]
     model.generation_config.pad_token_id = tokenizer.pad_token_id
-    # Configure logging for the attack log file
+
     if attack_log_file:
         with open(attack_log_file, 'w', newline='', encoding='utf-8') as outfile:
             writer = csv.writer(outfile)
@@ -314,7 +303,7 @@ def test_model_output(llm_inputs, model, tokenizer, frontend_delimiters, attack_
                 max_new_tokens=max_new_tokens,
                 use_cache=True,  # critical for fast decoding
             )
-        # Decode up to the EOS token
+        # Decode
         outp = tokenizer.decode(output_ids[0, input_ids.shape[1]:].tolist(), skip_special_tokens=True)
 
         if print_results:

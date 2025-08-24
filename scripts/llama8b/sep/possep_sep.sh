@@ -11,8 +11,8 @@ DELIMITER="TextTextText"
 
 SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
 
-BATCH_SIZE=6
-EPOCH=2
+BATCH_SIZE=4
+EPOCH=1
 
 http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
