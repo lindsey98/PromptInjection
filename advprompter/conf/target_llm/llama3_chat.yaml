@@ -8,6 +8,7 @@ llm_params:
   lora_params:
     lora_checkpoint: null
     lora_config: null
+
 prompt_manager:
   prompt_template:
     - key: system_message
@@ -15,6 +16,6 @@ prompt_manager:
     - key: full_instruct
       msg: "{full_instruct}"  # loaded from context
     - key: separator
-      msg: "\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+      msg: "\n\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
     - key: target
       msg: "{target}"  # loaded from context

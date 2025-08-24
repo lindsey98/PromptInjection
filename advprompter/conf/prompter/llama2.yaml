@@ -10,12 +10,12 @@ llm_params:
     lora_checkpoint: null #exp/local/2024.07.04/043448_mistral-none/checkpoints/step_2100
     lora_config:
       r: 8
-      lora_alpha: 16
+      lora_alpha: 8
       bias: "none"
       target_modules:
         - q_proj
-        - v_proj
         - lm_head
+
 prompt_manager:
   prompt_template: 
     - key: system_message

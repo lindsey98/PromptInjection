@@ -16,6 +16,6 @@ prompt_manager:
     - key: full_instruct
       msg: "{full_instruct}"  # loaded from context
     - key: separator
-      msg: "\n\n[/INST]\n" #"[/INST]"
+      msg: "\n\n[/INST]\n\n" #"[/INST]"
     - key: target
       msg: "{target}"  # loaded from context
