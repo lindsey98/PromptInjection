@@ -1,20 +1,33 @@
 import transformers
-from train import ModelArguments, DataArguments, TrainingArguments, AttackArguments
-from config import DEFAULT_TOKENS, SPECIAL_DELM_TOKENS, DELIMITERS
-from transformers import Trainer
+from train import smart_tokenizer_and_embedding_resize, ModelArguments, DataArguments, TrainingArguments, AttackArguments
 from transformers.utils import logging
-from modeling import  MistralMoEConfig, MistralForCausalLMMoEV2
+from modeling.qwen_instsep import Qwen2ForCausalLMMoE, Qwen2MoEConfig
 from data_generation.struq import jload, make_supervised_data_module
 from peft import LoraConfig, get_peft_model
-
+import os
+from train_ise_lora import ISETrainer
 logger = logging.get_logger(__name__)
+os.environ["WANDB_WATCH"]="all" # log all parameters gradients
+
 
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments, AttackArguments))
     model_args, data_args, training_args, attack_args = parser.parse_args_into_dataclasses()
     data_args.attack = attack_args.attack
-
     print('\n\n' + training_args.output_dir + '\n\n')
+
+    config = Qwen2MoEConfig.from_pretrained(
+        model_args.model_name_or_path,
+    )
+
+    model = Qwen2ForCausalLMMoE.from_pretrained(
+        model_args.model_name_or_path,
+        ignore_mismatched_sizes=True,
+        config=config,
+    )
+
+    if model_args.window_size > 0:
+        model.config.window = model_args.window_size
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -24,8 +37,20 @@ def train():
         use_fast=True,
         batched=True
     )
-    tokenizer.pad_token    = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=8,
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "down_proj", "up_proj"],
+        modules_to_save=["lm_head", "embed_tokens", "input_shifts"],
+    )
+    # Create the PEFT model
+    peft_model = get_peft_model(model, lora_config)
 
     # Construct dataloader
     frontend_delimiters = data_args.attack.split("_")[0]
@@ -36,33 +61,7 @@ def train():
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 
-
-    config = MistralMoEConfig.from_pretrained(
-        model_args.model_name_or_path,
-    )
-
-    model = MistralForCausalLMMoEV2.from_pretrained(
-        model_args.model_name_or_path,
-        ignore_mismatched_sizes=True,
-        config=config,
-    )
-
-    if model_args.window_size > 0:
-        model.config.window = model_args.window_size
-
-    lora_config = LoraConfig(
-        r=16,
-        lora_alpha=8,
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "down_proj", "up_proj"],
-        modules_to_save=["lm_head", "embed_tokens"],
-    )
-    # Create the PEFT model
-    peft_model = get_peft_model(model, lora_config)
-
-    trainer = Trainer(
+    trainer = ISETrainer(
         model=peft_model,
         tokenizer=tokenizer,
         args=training_args,
@@ -71,8 +70,8 @@ def train():
     trainer.model.print_trainable_parameters()
     trainer.train()
 
+    trainer.model.save_pretrained(training_args.output_dir)
     tokenizer.save_pretrained(training_args.output_dir)
-
     config = trainer.model.config  # Access the config of the model
     config.save_pretrained(training_args.output_dir)
 

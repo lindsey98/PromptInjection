@@ -1,6 +1,6 @@
 {
   "auto_wrap_policy": {
-    "transformer_layer_cls_to_wrap": ["MistralDecoderLayer"]
+    "transformer_layer_cls_to_wrap": ["Qwen2DecoderLayer"]
   },
   "use_orig_params": true,
   "sync_module_states": true,

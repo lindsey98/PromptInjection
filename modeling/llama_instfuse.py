@@ -12,8 +12,11 @@ from transformers.cache_utils import Cache, DynamicCache
 import torch.nn.functional as F
 from functools import partial
 from dataclasses import dataclass
+from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask, create_masks_for_generate
+from transformers.processing_utils import Unpack
+from transformers.utils import TransformersKwargs
+import inspect
 logger = logging.get_logger(__name__)
-
 
 def _get_last_indices(label_index: int, expert_labels: torch.LongTensor) -> torch.LongTensor:
     batch_size, seq_len = expert_labels.shape
@@ -50,141 +53,77 @@ class LlamaModel(transformers.LlamaModel):
     def forward(
         self,
         input_ids: torch.LongTensor = None,
+        expert_labels: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        expert_labels: torch.LongTensor = None,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
-
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        use_cache   = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
+        use_cache: Optional[bool] = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> BaseModelOutputWithPast:
         if (input_ids is None) ^ (inputs_embeds is not None):
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
-            )
-
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            )
-            use_cache = False
+            raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
         if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
+            inputs_embeds: torch.Tensor = self.embed_tokens(input_ids)
 
-        return_legacy_cache = False
-        if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
-            return_legacy_cache = True
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            logger.warning_once(
-                "We detected that you are passing `past_key_values` as a tuple and this is deprecated and will be removed in v4.43. "
-                "Please use an appropriate `Cache` class (https://huggingface.co/docs/transformers/v4.41.3/en/internal/generation_utils#transformers.Cache)"
-            )
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache()
 
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-            cache_position = torch.arange(
+            cache_position: torch.Tensor = torch.arange(
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
+
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
-        causal_mask = self._update_causal_mask(
-            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
+        causal_mask = create_causal_mask(
+            config=self.config,
+            input_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            cache_position=cache_position,
+            past_key_values=past_key_values,
+            position_ids=position_ids,
         )
-        hidden_states = inputs_embeds
 
-        # create position embeddings to be shared across the decoder layers
+        hidden_states = inputs_embeds
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
-        # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns    = () if output_attentions else None
-        next_decoder_cache = None
-
-        for layer_idx, decoder_layer in enumerate(self.layers):
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
-
-            # one-bit flip for FIRST attention's input
+        for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
+            # one-bit flip for First attention's input
             if self.config.bit_flip and layer_idx == 0:
                 inst_mask_2d = (expert_labels == self.data_label)  # B, L
                 inst_mask_3d = inst_mask_2d.unsqueeze(-1).expand_as(hidden_states)
-
-                ## v1
-                shifted_states = self.deinstruction_shift(hidden_states) # why having different shifts for different samples?
+                shifts = self.deinstruction_shift(hidden_states) # why having different shifts for different samples?
                 hidden_states  = torch.where(
                     inst_mask_3d,
-                    shifted_states + hidden_states,
+                    shifts + hidden_states,
                     hidden_states
                 )
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    causal_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                    position_embeddings,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    past_key_value=past_key_values,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                )
-
-            hidden_states = layer_outputs[0]
-
-            if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
-
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
+            hidden_states = decoder_layer(
+                hidden_states,
+                attention_mask=causal_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_values,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+                **kwargs,
+            )
 
         hidden_states = self.norm(hidden_states)
-
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
-
-        next_cache = next_decoder_cache if use_cache else None
-        if return_legacy_cache:
-            next_cache = next_cache.to_legacy_cache()
-
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
-
         return BaseModelOutputWithPast(
             last_hidden_state=hidden_states,
-            past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
+            past_key_values=past_key_values,
         )
-
 
 class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
     _tied_weights_keys = ["lm_head.weight"]
+    _tp_plan = {"lm_head": "colwise_rep"}
+    _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
 
     def __init__(self, config: LlamaFuseConfig):
         super().__init__(config)
@@ -193,7 +132,6 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         self.vocab_size = config.vocab_size
         self.vocab_size      = config.vocab_size
         self.hidden_size     = config.hidden_size
-        self.lm_head         = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.residual_weight = nn.Parameter(torch.tensor([0.01])) # 0.5 weight assigned to the last instruction token
         self.response_label  = 2
         self.instruct_label  = 0
@@ -203,41 +141,31 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         self,
         input_ids: torch.LongTensor = None,
         expert_labels: torch.LongTensor = None,
+        past_inst_hidden_states: Optional[Union[Cache, torch.FloatTensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        past_inst_hidden_states: Optional[Union[Cache, torch.FloatTensor]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = True,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-    ) -> Union[Tuple, CausalLMFuseOutputWithPast]:
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> CausalLMFuseOutputWithPast:
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
+            expert_labels=expert_labels,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
-            expert_labels=expert_labels,
+            **kwargs,
         )
 
-        hidden_states = outputs[0] # (batch_size, seq_len, hidden_size)
+        hidden_states = outputs.last_hidden_state
         if expert_labels is not None:
             batch_size, length, hidden_size = hidden_states.shape
             is_generation = (length == 1) and (past_inst_hidden_states is not None) # is it in newly-generated-token phase?
@@ -265,94 +193,158 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
                 fused_states = fused_states.unsqueeze(1).expand(-1, length, -1) # expand mixed_states (B, H) → (B, L, H)
                 hidden_states = torch.where(mask3d, fused_states, hidden_states)
 
-        if self.config.pretraining_tp > 1:
-            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
-            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
-            logits = torch.cat(logits, dim=-1)
-        else:
-            hidden_states = hidden_states.to(self.lm_head.weight.dtype)
-            logits = self.lm_head(hidden_states)
+        hidden_states = hidden_states.to(self.lm_head.weight.dtype)
 
-        logits = logits.float()
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         loss = None
         if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         return CausalLMFuseOutputWithPast(
             loss=loss,
             logits=logits,
-            past_key_values=outputs.past_key_values,
             past_inst_hidden_states=past_inst_hidden_states,
+            past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
 
     def prepare_inputs_for_generation(
         self,
-        input_ids,
-        past_key_values=None,
-        attention_mask=None,
-        inputs_embeds=None,
-        cache_position=None,
-        position_ids=None,
-        use_cache=True,
+        input_ids: torch.LongTensor,
+        past_key_values: Optional[Cache] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ):
-        expert_labels = None
-        if "expert_labels" in kwargs:
-            expert_labels = kwargs["expert_labels"]
+        model_inputs = {}
+        model_inputs["cache_position"] = cache_position
+        expert_labels = kwargs.pop("expert_labels", None)
 
+        # 2. Generic cache-dependent input preparation
         if past_key_values is not None:
-            if inputs_embeds is not None:  # Exception 1
-                input_ids = input_ids[:, -cache_position.shape[0] :]
-                if expert_labels is not None:
-                    expert_labels = expert_labels[:, -cache_position.shape[0] :] # ensure correct slicing
-            elif input_ids.shape[1] != cache_position.shape[0]:  # Default case (the "else", a no op, is Exception 2)
-                input_ids = input_ids[:, cache_position] # (batch_size, 1)
+            model_inputs["past_key_values"] = past_key_values
+            inputs_embeds, input_ids = self._cache_dependant_input_preparation(
+                input_ids, inputs_embeds, cache_position
+            )
 
-        if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
+        # 3. Prepare base model inputs
+        input_ids_key = "decoder_input_ids" if self.config.is_encoder_decoder else "input_ids"
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step for every prompt.
+        if not self.config.is_encoder_decoder:
+            if inputs_embeds is not None and len(cache_position) == inputs_embeds.shape[1]:
+                model_inputs[input_ids_key] = None
+                model_inputs["inputs_embeds"] = inputs_embeds
+            else:
+                # `clone` calls in this function ensure a consistent stride. See #32227
+                model_inputs[input_ids_key] = input_ids.clone(memory_format=torch.contiguous_format)
+                model_inputs["inputs_embeds"] = None
+        else:
+            model_inputs[input_ids_key] = input_ids.clone(memory_format=torch.contiguous_format)
+
+        # 4. Create missing `position_ids` on the fly
+        encoder_attention_mask = attention_mask if self.config.is_encoder_decoder else None
+        attention_mask = (
+            kwargs.pop("decoder_attention_mask", None) if self.config.is_encoder_decoder else attention_mask
+        )
+        attention_mask_key = "decoder_attention_mask" if self.config.is_encoder_decoder else "attention_mask"
+        position_ids_key = "decoder_position_ids" if self.config.is_encoder_decoder else "position_ids"
+        if (
+            attention_mask is not None
+            and kwargs.get(position_ids_key) is None
+            and position_ids_key in set(inspect.signature(self.forward).parameters.keys())
+        ):
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                position_ids = position_ids[:, -input_ids.shape[1] :]
-                if expert_labels is not None:
-                    expert_labels = expert_labels[:, -input_ids.shape[1] :] #the expert label will inherit the last token's expert label
+            kwargs[position_ids_key] = position_ids  # placed in kwargs for further processing (see below)
+            if expert_labels is not None:
+                expert_labels = expert_labels[:,-input_ids.shape[1]:]  # the expert label will inherit the last token's expert label
 
-        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
-        if inputs_embeds is not None and cache_position[0] == 0:
-            model_inputs = {"inputs_embeds": inputs_embeds}
-        else:
-            model_inputs = {"input_ids": input_ids.contiguous()}  # `contiguous()` needed for compilation use cases
+        # 5. Slice model inputs if it's an input that should have the same length as `input_ids`
+        for model_input_name in ["position_ids", "token_type_ids", "decoder_position_ids"]:
+            model_input = kwargs.get(model_input_name)
+            if model_input is not None:
+                if past_key_values is not None:
+                    current_input_length = (
+                        model_inputs["inputs_embeds"].shape[1]
+                        if model_inputs.get("inputs_embeds") is not None
+                        else model_inputs[input_ids_key].shape[1]
+                    )
+                    model_input = model_input[:, -current_input_length:]
+                    model_input = model_input.clone(memory_format=torch.contiguous_format)
+                model_inputs[model_input_name] = model_input
 
+        # 6. Create 4D attention mask is we are using a compilable cache (important for performant compiled forward
+        # pass)
+        if (
+            isinstance(past_key_values, Cache)
+            and past_key_values.is_compileable
+            and attention_mask is not None
+            and attention_mask.ndim == 2
+        ):
+            if not self.config.is_encoder_decoder and model_inputs["inputs_embeds"] is not None:
+                batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
+            else:
+                batch_size, sequence_length = model_inputs[input_ids_key].shape[:2]
+
+            # Create the causal mask with fixed shape in advance, to reduce recompilations. If the function to create
+            # the 4D causal mask exists, it should be present in the base model (XXXModel class) or in its decoder.
+            base_model = getattr(self, self.base_model_prefix, self)
+            decoder = base_model.get_decoder() if hasattr(base_model, "get_decoder") else None
+            causal_mask_creation_function = getattr(
+                base_model, "_prepare_4d_causal_attention_mask_with_cache_position", None
+            )
+            if causal_mask_creation_function is None and decoder is not None:  # it may be in the decoder
+                causal_mask_creation_function = getattr(
+                    decoder, "_prepare_4d_causal_attention_mask_with_cache_position", None
+                )
+
+            # If it's not defined, it means the model uses the new general mask API
+            if causal_mask_creation_function is None:  # can't be found
+                token_type_ids = model_inputs.get("token_type_ids", None)
+                position_ids = model_inputs.get(position_ids_key, None)
+                # Some models may overwrite the general one
+                causal_mask_creation_function = getattr(self, "create_masks_for_generate", create_masks_for_generate)
+                attention_mask = causal_mask_creation_function(
+                    config=self.config,
+                    # we only need batch size, seq_length and dtype here - we don't care about the values of the embeddings
+                    input_embeds=torch.empty((batch_size, sequence_length), dtype=self.dtype),
+                    attention_mask=attention_mask,
+                    cache_position=cache_position,
+                    past_key_values=past_key_values,
+                    position_ids=position_ids,
+                    token_type_ids=token_type_ids,
+                )
+            else:
+                attention_mask = causal_mask_creation_function(
+                    attention_mask,
+                    sequence_length=sequence_length,
+                    target_length=past_key_values.get_max_cache_shape(),
+                    dtype=self.dtype,
+                    cache_position=cache_position,
+                    batch_size=batch_size,
+                    config=self.config,
+                    past_key_values=past_key_values,
+                )
+        if attention_mask is not None:
+            model_inputs[attention_mask_key] = attention_mask
+
+        if encoder_attention_mask is not None:
+            model_inputs["attention_mask"] = encoder_attention_mask
+
+        # 7. Forward ALL kwargs that are uninitialized (e.g. `use_cache`).
+        for key, value in kwargs.items():
+            if key not in model_inputs:
+                model_inputs[key] = value
+
+        # 8. Remove unexpected `generate` inputs (TODO @joao: fix trainer and examples)
+        model_inputs.pop("labels", None)
         if expert_labels is not None:
             model_inputs["expert_labels"] = expert_labels
-        if "past_inst_hidden_states" in kwargs:
-            model_inputs["past_inst_hidden_states"] = kwargs["past_inst_hidden_states"]  # Pass expert_labels if provided
 
-        model_inputs.update(
-            {
-                "position_ids": position_ids,
-                "cache_position": cache_position,
-                "past_key_values": past_key_values,
-                "use_cache": use_cache,
-                "attention_mask": attention_mask,
-            }
-        )
         return model_inputs
 
     def _update_model_kwargs_for_generation(
@@ -368,7 +360,6 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
             outputs,
             model_kwargs,
             is_encoder_decoder,
-            standardize_cache_format,
             num_new_tokens,
         )
         if hasattr(outputs, "past_inst_hidden_states"):
@@ -377,7 +368,6 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
 
 
 class LlamaForCausalLMFuseV2(LlamaForCausalLMFuse):
-    _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config: LlamaFuseConfig):
         super().__init__(config)
@@ -393,41 +383,31 @@ class LlamaForCausalLMFuseV2(LlamaForCausalLMFuse):
         self,
         input_ids: torch.LongTensor = None,
         expert_labels: torch.LongTensor = None,
+        past_inst_hidden_states: Optional[Union[Cache, torch.FloatTensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        past_inst_hidden_states: Optional[Union[Cache, torch.FloatTensor]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = True,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-    ) -> Union[Tuple, CausalLMFuseOutputWithPast]:
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> CausalLMFuseOutputWithPast:
 
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
+        outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
+            expert_labels=expert_labels,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
             cache_position=cache_position,
-            expert_labels=expert_labels,
+            **kwargs,
         )
 
-        hidden_states = outputs[0] # (batch_size, seq_len, hidden_size)
+        hidden_states = outputs.last_hidden_state
         if expert_labels is not None:
             batch_size, length, hidden_size = hidden_states.shape
             is_generation = (length == 1) and (past_inst_hidden_states is not None) # is it in newly-generated-token phase?
@@ -457,38 +437,19 @@ class LlamaForCausalLMFuseV2(LlamaForCausalLMFuse):
                 fused_states  = fused_states.unsqueeze(1).expand(-1, length, -1) # expand mixed_states (B,H) → (B, L, H)
                 hidden_states = torch.where(mask3d, fused_states, hidden_states)
 
-        if self.config.pretraining_tp > 1:
-            lm_head_slices = self.lm_head.weight.split(self.vocab_size // self.config.pretraining_tp, dim=0)
-            logits = [F.linear(hidden_states, lm_head_slices[i]) for i in range(self.config.pretraining_tp)]
-            logits = torch.cat(logits, dim=-1)
-        else:
-            hidden_states = hidden_states.to(self.lm_head.weight.dtype)
-            logits = self.lm_head(hidden_states)
-
-        logits = logits.float()
+        hidden_states = hidden_states.to(self.lm_head.weight.dtype)
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
 
         loss = None
         if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
 
         return CausalLMFuseOutputWithPast(
             loss=loss,
             logits=logits,
-            past_key_values=outputs.past_key_values,
             past_inst_hidden_states=past_inst_hidden_states,
+            past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )

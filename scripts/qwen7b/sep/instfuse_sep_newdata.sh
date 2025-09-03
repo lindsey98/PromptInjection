@@ -1,15 +1,15 @@
 #!/bin/bash
 
-SCRIPT_PATH="train_possep_mistral.py"
-BASELINE="possep"
-BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
-DATA_PATH="datasets/sep/sep_data_cleaned.json"
+SCRIPT_PATH="train_instfuse_qwen.py"
+BASELINE="instfuse"
+BASE_MODEL="Qwen/Qwen2.5-7B-Instruct"
+DATA_PATH="datasets/sep/sep_data_cleaned_orig_gpt.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
-FSDP_CONFIG="training/config/fsdp_config_mistral.json"
-DELIMITER="TextTextTextMistral"
+FSDP_CONFIG="training/config/fsdp_config_qwen.json"
+DELIMITER="TextTextTextQwen"
 
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
+SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-newdata"
 
 BATCH_SIZE=4
 EPOCH=1

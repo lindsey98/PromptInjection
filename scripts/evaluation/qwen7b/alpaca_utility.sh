@@ -7,12 +7,6 @@ IFS=$'\n\t'
 read -p "Enter CUDA device ID to use (default: 0): " CUDA_ID
 CUDA_ID=${CUDA_ID:-0}  # Default to 0 if empty
 
-if ! [[ "$CUDA_ID" =~ ^[0-9]+$ ]]; then
-    echo "[ERROR] Invalid CUDA device ID: $CUDA_ID"
-    exit 1
-fi
-echo "Using CUDA device $CUDA_ID"
-
 # === Prompt for model_name_or_path ===
 read -p "Enter model_name_or_path: " MODEL_PATH
 
@@ -27,13 +21,13 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMFuse"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class Qwen2ForCausalLMFuse"
         ;;
     *ise*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMMoE"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class Qwen2ForCausalLMMoE"
         ;;
     *possep*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMMoEV2"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class Qwen2ForCausalLMMoEV2"
         ;;
 esac
 
@@ -43,7 +37,9 @@ else
     echo "No special model type detected → Running without extra flags"
 fi
 
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+# === Run command ===
+echo "Executing test..."
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack none"
 
 echo
 echo "⚙ Running:"

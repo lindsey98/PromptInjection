@@ -138,6 +138,8 @@ def train():
     )
     trainer.model.print_trainable_parameters()
     trainer.train()
+    # Save the LoRA-adapted model
+    trainer.model.save_pretrained(training_args.output_dir)
 
     tokenizer.save_pretrained(training_args.output_dir)
 

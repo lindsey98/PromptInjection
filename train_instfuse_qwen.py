@@ -1,12 +1,14 @@
 import transformers
 from train import ModelArguments, DataArguments, TrainingArguments, AttackArguments
 from transformers.utils import logging
-from modeling import MistralForCausalLMMoE, MistralMoEConfig
+from modeling.qwen_instfuse import Qwen2ForCausalLMFuse, Qwen2FuseConfig
+import os
 from data_generation.struq import jload, make_supervised_data_module
 from peft import LoraConfig, get_peft_model
-from train_ise_lora import ISETrainer
+from train_instfuse_lora import InstFuseTrainer
 
 logger = logging.get_logger(__name__)
+os.environ["WANDB_WATCH"]="all" # log all parameters gradients
 
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments, AttackArguments))
@@ -14,17 +16,15 @@ def train():
     data_args.attack = attack_args.attack
     print('\n\n' + training_args.output_dir + '\n\n')
 
-    config = MistralMoEConfig.from_pretrained(
+    config = Qwen2FuseConfig.from_pretrained(
         model_args.model_name_or_path,
     )
-    model = MistralForCausalLMMoE.from_pretrained(
+
+    model = Qwen2ForCausalLMFuse.from_pretrained(
         model_args.model_name_or_path,
         ignore_mismatched_sizes=True,
         config=config,
     )
-
-    if model_args.window_size > 0:
-        model.config.window = model_args.window_size
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -34,7 +34,7 @@ def train():
         use_fast=True,
         batched=True
     )
-    tokenizer.pad_token    = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
     lora_config = LoraConfig(
@@ -44,21 +44,22 @@ def train():
         bias="none",
         task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "down_proj", "up_proj"],
-        modules_to_save=["lm_head", "embed_tokens", "input_shifts"],
+        modules_to_save=["lm_head", "embed_tokens", "deinstruction_shift"],
     )
     # Create the PEFT model
     peft_model = get_peft_model(model, lora_config)
 
     # Construct dataloader
     frontend_delimiters = data_args.attack.split("_")[0]
+    print(frontend_delimiters)
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args,
-                                              frontend_delimiters=frontend_delimiters,
-                                              downsample=training_args.downsample)
+                                              downsample=training_args.downsample,
+                                              frontend_delimiters=frontend_delimiters)
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 
-    trainer = ISETrainer(
+    trainer = InstFuseTrainer(
         model=peft_model,
         tokenizer=tokenizer,
         args=training_args,
@@ -67,8 +68,9 @@ def train():
     trainer.model.print_trainable_parameters()
     trainer.train()
 
+    # Save the LoRA-adapted model
+    trainer.model.save_pretrained(training_args.output_dir)
     tokenizer.save_pretrained(training_args.output_dir)
-
     config = trainer.model.config  # Access the config of the model
     config.save_pretrained(training_args.output_dir)
 

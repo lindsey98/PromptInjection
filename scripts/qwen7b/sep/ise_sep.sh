@@ -1,13 +1,13 @@
 #!/bin/bash
 
-SCRIPT_PATH="train.py"
-BASELINE="struq"
-BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
+SCRIPT_PATH="train_ise_qwen.py"
+BASELINE="ise"
+BASE_MODEL="Qwen/Qwen2.5-7B-Instruct"
 DATA_PATH="datasets/sep/sep_data_cleaned.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
-FSDP_CONFIG="training/config/fsdp_config_mistral.json"
-DELIMITER="SpclSpclSpcl"
+FSDP_CONFIG="training/config/fsdp_config_qwen.json"
+DELIMITER="TextTextTextQwen"
 
 SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
 

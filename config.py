@@ -23,6 +23,7 @@ DELIMITERS = {
                      '<|eot_id|><|start_header_id|>user<|end_header_id|>',
                      '<|eot_id|><|start_header_id|>assistant<|end_header_id|>'],
     "TextTextTextMistral": ['<s>[INST] <<SYS>>', ' <</SYS>>', '[/INST]'],
+    "TextTextTextQwen": ['<|im_start|>system', '<|im_end|><|im_start|>user', '<|im_end|><|im_start|>assistant'],
     "SpclSpclSpcl": [SPECIAL_DELM_TOKENS[3] + ' ' + SPECIAL_DELM_TOKENS[0] + SPECIAL_DELM_TOKENS[4],
                      SPECIAL_DELM_TOKENS[3] + ' ' + SPECIAL_DELM_TOKENS[1] + SPECIAL_DELM_TOKENS[4],
                      SPECIAL_DELM_TOKENS[3] + ' ' + SPECIAL_DELM_TOKENS[2] + SPECIAL_DELM_TOKENS[4]],
@@ -31,6 +32,10 @@ DELIMITERS = {
         ['<|begin_of_text|><|start_header_id|>system<|end_header_id|>', 
          '<|eot_id|><|start_header_id|>user<|end_header_id|>',
          '<|eot_id|><|start_header_id|>assistant<|end_header_id|>'],
+    "Qwen2.5-7B-Instruct":
+        ['<|im_start|>system',
+         '<|im_end|><|im_start|>user',
+         '<|im_end|><|im_start|>assistant'],
 }
 
 PROMPT_FORMAT = {}

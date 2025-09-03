@@ -63,6 +63,8 @@ class SuffixManager:
         "llama-2",
         "vicuna_v1.1",
         "mistral",
+        "mistral03",
+        "qwen2",
         "chatgpt",
         "completion",
         "raw",
@@ -94,12 +96,7 @@ class SuffixManager:
         self.sep_tokens = self.tokenizer(self.conv_template.sep, add_special_tokens=False).input_ids
         non_empty = [(True if self.tokenizer.decode([token]) != '' else False) for token in self.sep_tokens]
         self.num_tok_sep = len(self.sep_tokens)
-        #self.num_tok_sep = sum(non_empty)
-        #sep_tokens = []
-        #for i, token in enumerate(self.sep_tokens):
-            #if non_empty[i]: sep_tokens.append(token)
-        #self.sep_tokens = sep_tokens
-        
+
         #self.sep_tokens = self.sep_tokens[non_empty]
         # if self.num_tok_sep is wrong, low ASR is observed with no error in running and debugging
         #print(self.tokenizer(self.conv_template.sep, add_special_tokens=False).input_ids)#; exit()

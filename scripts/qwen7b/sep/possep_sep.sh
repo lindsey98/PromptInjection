@@ -1,18 +1,18 @@
 #!/bin/bash
 
-SCRIPT_PATH="train_ise_mistral.py"
-BASELINE="ise"
-BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
+SCRIPT_PATH="train_possep_qwen.py"
+BASELINE="possep"
+BASE_MODEL="Qwen/Qwen2.5-7B-Instruct"
 DATA_PATH="datasets/sep/sep_data_cleaned.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
-FSDP_CONFIG="training/config/fsdp_config_mistral.json"
-DELIMITER="TextTextTextMistral"
+FSDP_CONFIG="training/config/fsdp_config_qwen.json"
+DELIMITER="TextTextTextQwen"
 
 SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
 
 BATCH_SIZE=4
-EPOCH=2
+EPOCH=1
 
 http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \

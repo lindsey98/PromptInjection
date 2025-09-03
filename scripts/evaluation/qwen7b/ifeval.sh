@@ -27,13 +27,13 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMFuse"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class Qwen2ForCausalLMFuse"
         ;;
     *ise*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMMoE"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class Qwen2ForCausalLMMoE"
         ;;
     *possep*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMMoEV2"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class Qwen2ForCausalLMMoEV2"
         ;;
 esac
 
@@ -44,9 +44,8 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mmlupro.test_mmlu \
---model_name_or_path $MODEL_PATH \
-$EXTRA_FLAGS"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.ifeval.test_ifeval \
+--model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"

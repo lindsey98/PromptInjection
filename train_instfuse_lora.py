@@ -145,6 +145,9 @@ def train():
     trainer.model.print_trainable_parameters()
     trainer.train()
 
+    # Save the LoRA-adapted model
+    trainer.model.save_pretrained(training_args.output_dir)
+
     # Merge and unload LoRA
     tokenizer.save_pretrained(training_args.output_dir)
 
