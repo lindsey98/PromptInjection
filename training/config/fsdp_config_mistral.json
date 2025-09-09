@@ -1,6 +1,6 @@
 {
   "auto_wrap_policy": {
-    "transformer_layer_cls_to_wrap": ["LlamaDecoderLayer"]
+    "transformer_layer_cls_to_wrap": ["MistralDecoderLayer"]
   },
   "use_orig_params": false,
   "sync_module_states": true,

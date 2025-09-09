@@ -2,8 +2,8 @@
   "auto_wrap_policy": {
     "transformer_layer_cls_to_wrap": ["Qwen2DecoderLayer"]
   },
-  "use_orig_params": true,
+  "use_orig_params": false,
   "sync_module_states": true,
-  "forward_prefetch": true,
-  "limit_all_gathers": true
+  "forward_prefetch": false,
+  "backward_prefetch": "backward_pre"
 }

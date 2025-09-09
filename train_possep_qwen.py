@@ -45,7 +45,7 @@ def train():
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "down_proj", "up_proj"],
+        target_modules="all-linear",
         modules_to_save=["lm_head", "embed_tokens"],
     )
     # Create the PEFT model
