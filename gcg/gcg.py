@@ -90,7 +90,7 @@ class GCGAttack(BaseAttack):
         num_coords = self._param_schedule()
         num_coords = min(num_coords, len(optim_ids))
         if self._not_allowed_tokens is not None:
-            grad[:, self._not_allowed_tokens.to(device)] = np.infty
+            grad[:, self._not_allowed_tokens.to(device)] = np.inf
 
         # pylint: disable=invalid-unary-operand-type
         top_indices = (-grad).topk(self._topk, dim=1).indices

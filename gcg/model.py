@@ -1,8 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
 import dataclasses
 import logging
 import os
@@ -23,6 +18,7 @@ from gcg.utils import (
     build_prompt,
     get_prefix_cache,
 )
+import gc
 logger = logging.getLogger(__name__)
 
 Device = int | str | torch.device
@@ -34,7 +30,6 @@ BatchLogits = Float[torch.Tensor, "batch_size seq_len vocab_size"]
 @dataclasses.dataclass
 class LossOutput:
     """Loss output from model."""
-
     losses: BatchLoss
     logits: BatchLogits | None = None
     texts: List[str] | None = None
@@ -46,7 +41,6 @@ class TransformersModel:
     """Model builder for HuggingFace Transformers model.
 
     `model` should be in the format model_name@checkpoint_path.
-
     Call with a list of `Message` objects to generate a response.
     """
 
@@ -152,8 +146,6 @@ class TransformersModel:
         if isinstance(inputs[0], str):
             # Turn strings to token ids
             model_inputs = self.tokenizer(inputs, return_tensors="pt", padding=True)
-            #index = toks.index(25782) if 25782 in toks else -1; toks = [x for x in toks if x != 25782]
-            #if index != -1: toks.insert(index, 758); toks.insert(index+1, 271)
         else:
             # Assume inputs are token ids
             model_inputs = {
@@ -177,6 +169,8 @@ class TransformersModel:
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
         )
+        gc.collect()
+        torch.cuda.empty_cache()
         return [response]
 
     def _get_batch_prefix_cache(self, batch_size: int) -> PrefixCache:
@@ -206,21 +200,10 @@ class TransformersModel:
         suffix: list[str] | None = None,
         skipped_suffixes: set | None = None,
     ) -> torch.Tensor:
-        """Filter suffixes using all models.
-
-        Args:
-            suffix_ids: Suffix ids to filter. Defaults to None.
-            suffix: Suffix strings to filter. Defaults to None.
-            skipped_suffixes: Set of suffixes to skip. Defaults to None.
-
-        Returns:
-            Boolean filter of suffixes to keep.
-        """
+        """Filter suffixes using all models."""
         _, orig_len = suffix_ids.shape
         device = suffix_ids.device
-        assert (suffix_ids is not None) ^ (
-            suffix is not None
-        ), "Either suffix_ids OR suffix must be provided but not both!"
+        assert (suffix_ids is not None) ^ (suffix is not None), "Either suffix_ids OR suffix must be provided but not both!"
         if suffix is None:
             decoded = self.tokenizer.batch_decode(
                 suffix_ids,
@@ -233,14 +216,10 @@ class TransformersModel:
                 return_tensors="pt",
                 padding=True,
             ).input_ids.to(device)
-            # Filter out suffixes that do not tokenize back to the same ids
             if self.tokenizer.padding_side == "left":
                 filter_cond = torch.all(encoded[:, -orig_len:] == suffix_ids, dim=1)
             else:
                 filter_cond = torch.all(encoded[:, :orig_len] == suffix_ids, dim=1)
-            # Count number of non-pad tokens
-            # pad_token_id = self._tokenizer.pad_token_id
-            # filter_cond = (encoded != pad_token_id).sum(1) == orig_len
         else:
             encoded = self.tokenizer(
                 suffix,
@@ -257,11 +236,9 @@ class TransformersModel:
             filter_cond = torch.tensor(filter_cond, device=device, dtype=torch.bool)
 
         if skipped_suffixes is not None:
-            # Skip seen/visited suffixes
             is_kept = [suffix not in skipped_suffixes for suffix in decoded]
             is_kept = torch.tensor(is_kept, device=device, dtype=torch.bool)
         else:
-            # No skip
             is_kept = torch.ones(len(decoded), device=device, dtype=torch.bool)
 
         filter_cond &= is_kept
@@ -275,16 +252,10 @@ class TransformersModel:
         max_target_len: int | None = None,
         **kwargs,
     ) -> LossOutput:
-        """Compute loss given multiple suffixes.
+        """Compute loss given multiple suffixes."""
+        # 从 kwargs 读取开关：默认 True（保持原行为）
+        return_logits = bool(kwargs.pop("return_logits", True))
 
-        Args:
-            eval_input: Input to evaluate. Must be EvalInput.
-            batch_size: Optional batch size. Defaults to None (use all samples).
-
-        Returns:
-            LossOutput object.
-        """
-        _ = kwargs  # Unused
         suffix_ids = eval_input.suffix_ids
         dynamic_input_ids = eval_input.dynamic_input_ids
         targets = eval_input.target_ids
@@ -295,8 +266,6 @@ class TransformersModel:
         device = self.device
 
         if max_target_len is not None:
-            # Adjust loss_slice, targets, and input_ids according to
-            # most max_target_len
             loss_slice = slice(
                 loss_slice.start,
                 min(loss_slice.stop, loss_slice.start + max_target_len),
@@ -308,15 +277,15 @@ class TransformersModel:
             dynamic_input_ids = dynamic_input_ids[: loss_slice.stop + 1]
             expert_labels     = expert_labels[: loss_slice.stop + 1]
 
-        # Determine batch size and number of batches
+        # ---- batching (固定 batch_size；最后一批用填充) ----
         num_samples = len(suffix_ids)
         if batch_size is None:
             batch_size = num_samples
         else:
             batch_size = min(batch_size, num_samples)
         num_batches = int(np.ceil(num_samples / batch_size))
-        # Device placement BEFORE batch loop. This should be fine since inputs
-        # don't take much memory anyway.
+
+        # 准备输入模板
         dynamic_input_ids       = dynamic_input_ids.to(device)
         batch_dynamic_input_ids = dynamic_input_ids.repeat(batch_size, 1)
         expert_labels       = expert_labels.to(device)
@@ -351,6 +320,10 @@ class TransformersModel:
             )
             loss_list.append(loss)
             logits_list.append(logits)
+            # 及时释放临时引用
+            gc.collect()
+            torch.cuda.empty_cache()
+
         loss = torch.cat(loss_list, dim=0).to(orig_device, non_blocking=True)
         logits = torch.cat(logits_list, dim=0).to(orig_device, non_blocking=True)
 
@@ -376,14 +349,13 @@ class TransformersModel:
         num_samples = num_samples or len(batch_input_ids)
         input_embeds = self.embed_layer(batch_input_ids)
 
-        # logits: [batch_size, seq_len, vocab_size]
         if self.pass_expert_labels:
             if self.prefix_cache_inst_states is not None:
                 logits = self.model(
                     inputs_embeds=input_embeds,
                     expert_labels=batch_expert_labels,
                     past_key_values=self._get_batch_prefix_cache(len(batch_input_ids)),
-                    past_inst_hidden_states = self.prefix_cache_inst_states,
+                    past_inst_hidden_states=self.prefix_cache_inst_states,
                     use_cache=True,
                 ).logits[:num_samples]
             else:
@@ -400,6 +372,10 @@ class TransformersModel:
                 use_cache=True,
             ).logits[:num_samples]
 
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        # 不再 empty_cache()，避免碎片化
         logits = logits / temperature
 
         if isinstance(loss_slice, slice):
@@ -408,13 +384,12 @@ class TransformersModel:
             loss_logits = logits.gather(1, loss_slice)
 
         if batch_targets.dtype == torch.long:
-            # Hard-label target usually used for computing loss on target
-            # loss_logits: [batch_size, vocab_size, loss_len]
+            # Hard-label
             loss = F.cross_entropy(
                 loss_logits.permute(0, 2, 1), batch_targets, reduction="none"
             ).mean(dim=1)
         else:
-            # Soft-label target usually used for training proxy model
+            # Soft-label
             loss = F.kl_div(
                 loss_logits.log_softmax(dim=-1),
                 batch_targets / temperature,
@@ -478,6 +453,8 @@ class TransformersModel:
             loss_logits = logits[:, loss_slice].squeeze(0)
             loss = F.cross_entropy(loss_logits / temperature, target_ids)
             embed_grads = torch.autograd.grad(outputs=[loss], inputs=[input_embeds])[0]
+            gc.collect()
+            torch.cuda.empty_cache()
 
         embed_grads.detach_()
         embed_grads = embed_grads[0, optim_slice]

@@ -1,22 +1,21 @@
 #!/bin/bash
 
 SCRIPT_PATH="train_unified.py"
-BASELINE="possep"
+BASELINE="instfuse"
 BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
-DATA_PATH="datasets/sep/sep_data_cleaned.json"
+DATA_PATH="datasets/sep/sep_data_origdata_dpo.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
 FSDP_CONFIG="training/config/fsdp_config_mistral.json"
 DELIMITER="TextTextTextMistral"
-
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
+SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-origdata-dpo"
 
 BATCH_SIZE=4
 EPOCH=1
 
-OBJECTIVE="sft"
+OBJECTIVE="dpo"
 MODEL_FAMILY="mistral"
-ARCH="possep"
+ARCH="fuse"
 
 http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \

@@ -6,6 +6,7 @@ import transformers
 from transformers.utils import logging
 from peft import LoraConfig, get_peft_model
 from datasets import load_dataset
+from trl import DPOTrainer
 
 from training.trainer import DPOTrainerOurs, SFTTrainerOurs, SFTTrainerISE, DPOArgsInstFuse, \
     ModelArguments, DataArguments, TrainingArguments, AttackArguments, DPOArgsSecAlign
@@ -50,25 +51,25 @@ def pick_llama_model(arch: str):
         return LlamaFuseConfig, LlamaForCausalLMConcatFuse
     if arch == "embeddingshift":
         return LlamaFuseConfig, LlamaForCausalLMEmbeddingShift
-    if arch == "moe":
+    if arch == "ise":
         return LlamaMoEConfig, LlamaForCausalLMMoE
-    if arch == "moe_v2":
+    if arch == "possep":
         return LlamaMoEConfig, LlamaForCausalLMMoEV2
     raise ValueError(f"Unsupported LLaMA arch: {arch}")
 
 def pick_mistral_model(arch: str):
     if arch == "fuse":
         return MistralFuseConfig, MistralForCausalLMFuse
-    if arch == "moe":
+    if arch == "ise":
         return MistralMoEConfig, MistralForCausalLMMoE
-    if arch == "moe_v2":
+    if arch == "possep":
         return MistralMoEConfig, MistralForCausalLMMoEV2
     raise ValueError(f"Unsupported Mistral arch: {arch}")
 
 def build_lora_config(objective: str, arch: str) -> LoraConfig:
     if objective in ("dpo", "sft") and arch in ("fuse", "nofuse", "concatfuse", "embeddingshift"):
         modules = ["embed_tokens", "lm_head", "deinstruction_shift"]
-    elif arch in ("moe"):
+    elif arch in ("ise"):
         modules = ["lm_head", "embed_tokens", "input_shifts"]
     else:
         modules = ["lm_head", "embed_tokens"]
@@ -88,14 +89,14 @@ def main(argv: Optional[List[str]] = None):
     parser.add_argument("--objective", choices=["dpo", "sft", "secalign_dpo", "struq_sft"], required=True)
     parser.add_argument("--model-family", choices=["llama", "mistral"], required=False, default="base")
     parser.add_argument("--arch", required=True,
-                        choices=["base", "fuse", "nofuse", "concatfuse", "embeddingshift", "moe", "moe_v2"])
+                        choices=["base", "fuse", "nofuse", "concatfuse", "embeddingshift", "ise", "possep"])
     known, remaining = parser.parse_known_args(argv)
 
     # Stage 2: parse HF dataclasses per flow
     if known.objective == "dpo":
         hf_parser = transformers.HfArgumentParser((ModelArguments, DataArguments, DPOArgsInstFuse, AttackArguments))
         model_args, data_args, training_args, attack_args = hf_parser.parse_args_into_dataclasses(remaining)
-    elif known.objective == "secalign":
+    elif known.objective == "secalign_dpo":
         hf_parser = transformers.HfArgumentParser((ModelArguments, DPOArgsSecAlign, DataArguments, AttackArguments))
         model_args, training_args, data_args, attack_args = hf_parser.parse_args_into_dataclasses(remaining)
     else:  # SFT
@@ -172,8 +173,9 @@ def main(argv: Optional[List[str]] = None):
                                            frontend_delimiters=frontend_delimiters)
     elif known.objective == "secalign_dpo":
         # secalign uses raw JSON 'train_dataset' and DPOTrainer w/ processing_class only;
-        data_module = {"train_dataset": None, "eval_dataset": None}
-    elif known.objectie == "sft":
+        train_dataset = load_dataset('json', data_files=data_args.data_path_list, split="train")
+        data_module = {"train_dataset": train_dataset, "eval_dataset": None}
+    elif known.objective == "sft":
         data_module = make_supervised_data_module(tokenizer=tokenizer,
                                                   data_args=data_args,
                                                   frontend_delimiters=frontend_delimiters,
@@ -200,18 +202,14 @@ def main(argv: Optional[List[str]] = None):
             **data_module
         )
     elif known.objective == "secalign_dpo": # DPO but secalign objective
-        if data_module["train_dataset"] is None:
-            train_dataset = load_dataset('json', data_files=data_args.data_path_list, split="train")
-        else:
-            train_dataset = data_module["train_dataset"]
         trainer = DPOTrainer(
             model,
             args=training_args,
-            train_dataset=train_dataset,
             processing_class=tokenizer,
+            **data_module,
         )
     else:  # SFT objective
-        if known.arch in ("moe"):
+        if known.arch in ("ise"):
             trainer_class = SFTTrainerISE
         elif known.arch in ("fuse", "nofuse", "concatfuse", "embeddingshift"):
             trainer_class = SFTTrainerOurs

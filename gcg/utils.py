@@ -7,7 +7,7 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Union
+from typing import List, Union, Optional
 
 import fastchat
 import torch
@@ -21,6 +21,7 @@ from data_generation.struq import compute_expert_labels
 
 logger = logging.getLogger(__name__)
 from copy import deepcopy
+from transformers.cache_utils import DynamicCache
 
 class Role(Enum):
     USER = 1
@@ -350,12 +351,6 @@ def build_prompt(
     return conv.get_prompt()
 
 
-def batchify_kv_cache(prefix_cache, batch_size):
-    batch_prefix_cache = []
-    for k, v in prefix_cache:
-        batch_prefix_cache.append((k.repeat(batch_size, 1, 1, 1), v.repeat(batch_size, 1, 1, 1)))
-    return batch_prefix_cache
-
 
 def get_nonascii_toks(tokenizer, device="cpu") -> torch.Tensor:
     def is_ascii(s):
@@ -384,6 +379,13 @@ def get_nonascii_toks(tokenizer, device="cpu") -> torch.Tensor:
 
     return torch.tensor(non_ascii_toks, device=device)
 
+def batchify_kv_cache(prefix_cache: DynamicCache, batch_size):
+    batch_prefix_cache = []
+    for k, v in prefix_cache:
+        batch_prefix_cache.append((k.repeat(batch_size, 1, 1, 1), v.repeat(batch_size, 1, 1, 1)))
+    return batch_prefix_cache
+
+
 
 def get_prefix_cache(
     suffix_manager: SuffixManager,
@@ -408,7 +410,7 @@ def get_prefix_cache(
     num_static_tokens = len(static_input_ids)
     logger.info("Fixing the first %d tokens as prefix", num_static_tokens)
     logger.info("Caching prefix...")
-    device = model.device if hasattr(model, "device") else model.module.device
+    device = next(model.parameters()).device
 
     with torch.no_grad():
         embed_layer   = model.get_input_embeddings()

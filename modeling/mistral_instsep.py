@@ -122,6 +122,8 @@ class MistralForCausalLMMoE(transformers.MistralForCausalLM):
         del self.model
         self.model      = MistralModel(config)
         self.vocab_size = config.vocab_size
+        self.final_tap = torch.nn.Identity()  # <— dummy tap point
+
         self.post_init()
 
     def forward(

@@ -380,6 +380,7 @@ class BaseAttack:
                 )
             del token_grads, dynamic_input_ids
             gc.collect()
+            torch.cuda.empty_cache()
 
             if not passed:
                 logger.info("Attack succeeded! Early stopping...")

@@ -21,6 +21,7 @@ if [ -z "$MODEL_PATH" ]; then
     exit 1
 fi
 echo "Model path: $MODEL_PATH"
+MODEL_ID=$(basename "$MODEL_PATH")
 
 # === Detect flags based on model path ===
 EXTRA_FLAGS=""
@@ -44,8 +45,8 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mmlupro.test_mmlu \
---model_name_or_path $MODEL_PATH \
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mt_bench.gen_model_answer \
+--model-path $MODEL_PATH --model-id $MODEL_ID \
 $EXTRA_FLAGS"
 
 echo

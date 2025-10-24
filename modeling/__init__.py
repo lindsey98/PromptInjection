@@ -1,6 +1,5 @@
 from .llama_instsep import LlamaForCausalLMMoE, LlamaForCausalLMMoEV2, LlamaMoEConfig
-from .llama_instfuse import LlamaForCausalLMFuse, LlamaForCausalLMFuseV2, LlamaFuseConfig
+from .llama_instfuse import LlamaForCausalLMFuse, LlamaForCausalLMConcatFuse, LlamaFuseConfig,\
+    LlamaForCausalLMConcatFuse, LlamaForCausalLMEmbeddingShift, LlamaForCausalLMNoFuse
 from .mistral_instsep import MistralForCausalLMMoE, MistralForCausalLMMoEV2, MistralMoEConfig
 from .mistral_instfuse import MistralForCausalLMFuse, MistralForCausalLMFuseV2, MistralFuseConfig
-from .qwen_instsep import Qwen2ForCausalLMMoE, Qwen2ForCausalLMMoEV2, Qwen2MoEConfig
-from .qwen_instfuse import Qwen2ForCausalLMFuse, Qwen2ForCausalLMFuseV2, Qwen2FuseConfig

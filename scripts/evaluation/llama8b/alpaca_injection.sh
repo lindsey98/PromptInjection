@@ -1,4 +1,6 @@
 #!/bin/bash
+source /home/ruofan/anaconda3/etc/profile.d/conda.sh
+conda activate prompt  # Replace with your actual env name
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -37,6 +39,15 @@ echo "Model path: $MODEL_PATH"
 EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
+    *instfuse*nofusion*)
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMNoFuse"
+        ;;
+    *instfuse*concatfusion*)
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMConcatFuse"
+        ;;
+    *instfuse*embeddingshift*)
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMEmbeddingShift"
+        ;;
     *instfuse*)
         EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMFuse"
         ;;

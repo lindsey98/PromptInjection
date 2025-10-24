@@ -1,28 +1,21 @@
 #!/bin/bash
 
-SCRIPT_PATH="train_unified.py"
-BASELINE="possep"
-BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
-DATA_PATH="datasets/sep/sep_data_cleaned.json"
+SCRIPT_PATH="train_instfuse_dpo_mini.py"
+BASELINE="instfuse"
+BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct"
+DATA_PATH="datasets/sep/sep_data_cleaned_dpo_gpt.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
-FSDP_CONFIG="training/config/fsdp_config_mistral.json"
-DELIMITER="TextTextTextMistral"
+FSDP_CONFIG="training/config/fsdp_config.json"
+DELIMITER="TextTextText"
 
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
+SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-newdata-dpo-mini"
 
 BATCH_SIZE=4
 EPOCH=1
 
-OBJECTIVE="sft"
-MODEL_FAMILY="mistral"
-ARCH="possep"
-
 http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
-  --objective "${OBJECTIVE}" \
-  --model-family "${MODEL_FAMILY}" \
-  --arch "${ARCH}" \
   --model_name_or_path "$BASE_MODEL" \
   --data_path "$DATA_PATH" \
   --output_dir "$SAVE_PATH" \

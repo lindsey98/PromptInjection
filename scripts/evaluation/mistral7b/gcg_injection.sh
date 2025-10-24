@@ -43,6 +43,7 @@ else
     echo "No special model type detected → Running without extra flags"
 fi
 
+
 CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo

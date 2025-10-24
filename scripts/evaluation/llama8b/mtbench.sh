@@ -21,19 +21,29 @@ if [ -z "$MODEL_PATH" ]; then
     exit 1
 fi
 echo "Model path: $MODEL_PATH"
+MODEL_ID=$(basename "$MODEL_PATH")
 
 # === Detect flags based on model path ===
 EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
+    *instfuse*nofusion*)
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMNoFuse"
+        ;;
+    *instfuse*concatfusion*)
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMConcatFuse"
+        ;;
+    *instfuse*embeddingshift*)
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMEmbeddingShift"
+        ;;
     *instfuse*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMFuse"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMFuse"
         ;;
     *ise*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMMoE"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMMoE"
         ;;
     *possep*)
-        EXTRA_FLAGS="--pass_expert_labels --customized_model_class MistralForCausalLMMoEV2"
+        EXTRA_FLAGS="--pass_expert_labels --customized_model_class LlamaForCausalLMMoEV2"
         ;;
 esac
 
@@ -44,8 +54,8 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mmlupro.test_mmlu \
---model_name_or_path $MODEL_PATH \
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mt_bench.gen_model_answer \
+--model-path $MODEL_PATH --model-id $MODEL_ID \
 $EXTRA_FLAGS"
 
 echo
