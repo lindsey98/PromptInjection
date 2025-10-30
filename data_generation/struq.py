@@ -171,6 +171,7 @@ def compute_expert_labels(seq, user_inst_seperator, data_seperator, response_sep
     return expert_this
 
 def _tokenize_fn(strings, tokenizer, frontend_delimiters, compute_gate=False, add_special_tokens=True):
+    tokenizer.model_max_length = 131072
     tokenized_list = [
         tokenizer(
             text,

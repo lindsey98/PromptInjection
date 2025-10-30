@@ -376,13 +376,13 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-            self,
-            input_ids: torch.LongTensor,
-            past_key_values: Optional[Cache] = None,
-            attention_mask: Optional[torch.LongTensor] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            cache_position: Optional[torch.LongTensor] = None,
-            **kwargs,
+        self,
+        input_ids: torch.LongTensor,
+        past_key_values: Optional[Cache] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs,
     ):
         model_inputs = super().prepare_inputs_for_generation(
             input_ids=input_ids,
