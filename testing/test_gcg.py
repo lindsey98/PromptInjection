@@ -192,24 +192,6 @@ def load_model_and_tokenizer(base_model_path,
                                                                 config=config,
                                                                 torch_dtype=torch.float16,
                                                                 device_map=device_map)
-            elif customized_model_class == "Qwen2ForCausalLMFuse":
-                config = Qwen2FuseConfig.from_pretrained(trained_model_path)
-                model  = Qwen2ForCausalLMFuse.from_pretrained(trained_model_path,
-                                                               config=config,
-                                                               torch_dtype=torch.float16,
-                                                               device_map=device_map)
-            elif customized_model_class == "Qwen2ForCausalLMMoE":
-                config = Qwen2MoEConfig.from_pretrained(trained_model_path)
-                model  = Qwen2ForCausalLMMoE.from_pretrained(trained_model_path,
-                                                              config=config,
-                                                              torch_dtype=torch.float16,
-                                                              device_map=device_map)
-            elif customized_model_class == "Qwen2ForCausalLMMoEV2":
-                config = Qwen2MoEConfig.from_pretrained(trained_model_path)
-                model  = Qwen2ForCausalLMMoEV2.from_pretrained(trained_model_path,
-                                                                config=config,
-                                                                torch_dtype=torch.float16,
-                                                                device_map=device_map)
         except Exception as e:
             logger.error(f"Error loading custom model class {customized_model_class} from {trained_model_path}: {e}")
             raise

@@ -7,9 +7,6 @@ from collections import defaultdict, Counter
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ---------------------------
-# score extraction utilities
-# ---------------------------
 def _regex_find_score(text):
     patterns = [
         r"[Rr]ating\s*[:=]\s*(\d+(\.\d+)?)",
@@ -101,15 +98,11 @@ def load_cat_avg(jsonl_path, qid2cat=None, single_only=True):
             cat_counts[cat] += 1
 
     if not cat_scores:
-        raise ValueError(f"[{jsonl_path}] 没有解析到分数（可能被过滤为单轮后无数据）。")
+        raise ValueError(f"[{jsonl_path}]。")
     cat_avg = {c: (sum(v) / len(v)) for c, v in cat_scores.items()}
     return cat_avg, cat_counts
 
 def choose_k_axes(all_cat_counts, k=None, prefer=None):
-    """
-    k: 需要的轴数；None 表示用 prefer；k<=0 表示全部类别
-    prefer: 显式给定的类别列表（优先使用）
-    """
     if prefer:
         wanted = [c for c in prefer if c]
         return wanted if (k is None or k <= 0 or len(wanted) == k) else wanted[:k]
@@ -122,7 +115,7 @@ def choose_k_axes(all_cat_counts, k=None, prefer=None):
     if not cats:
         return []
 
-    if k is None or k <= 0:           # 全部类别
+    if k is None or k <= 0:
         return cats
     if len(cats) <= k:
         return cats
@@ -140,7 +133,7 @@ def sentence_case(s: str) -> str:
     return t[:1].upper() + t[1:].lower() if t else t
 
 def radar_setup(ax, labels, vmin=0, vmax=10):
-    N = len(labels)                       # 动态维度
+    N = len(labels)
     angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
     angles += angles[:1]
 
@@ -151,7 +144,6 @@ def radar_setup(ax, labels, vmin=0, vmax=10):
 
     pretty_labels = [sentence_case(l) for l in labels]
     ax.set_xticklabels(pretty_labels, fontsize= 20 , fontweight="bold")
-    # 视 N 调整字号，N 多时自动变小一点（可按需微调）
 
     ax.set_yticks([0.25, 0.5, 0.75, 1.0])
     ax.set_yticklabels([f"{int(x*(vmax-vmin)+vmin)}" for x in [0.25, 0.5, 0.75, 1.0]], fontsize=10)
@@ -187,32 +179,40 @@ def build_values(inputs, qid2cat, axes_wanted, single_only, vmax):
     return values_list, cat_counts_list
 
 def main():
+    '''
+    E.g. --title-a "LLaMA-8B" --title-b "Mistral-7B" \
+    --inputs-a meta-llama/Meta-Llama-3-8B-Instruct-SpclSpclSpcl-secalign-sep-none/gpt-4_judgement_on_mtbench.jsonl meta-llama/Meta-Llama-3-8B-Instruct-SpclSpclSpcl-struq-sep-none/gpt-4_judgement_on_mtbench.jsonl meta-llama/Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-dpo/gpt-4_judgement_on_mtbench.jsonl meta-llama/Meta-Llama-3-8B-Instruct-TextTextText-ise-sep-none/gpt-4_judgement_on_mtbench.jsonl meta-llama/Meta-Llama-3-8B-Instruct-TextTextText-possep-sep-none/gpt-4_judgement_on_mtbench.jsonl meta-llama/Meta-Llama-3-8B-Instruct-log/gpt-4_judgement_on_mtbench.jsonl \
+     --labels-a "SecAlign" "StruQ" "Ours" "ISE" "PFT" "Undefended" \
+    --inputs-b mistralai/Mistral-7B-Instruct-v0.3-SpclSpclSpcl-secalign-sep-none/gpt-4_judgement_on_mtbench.jsonl mistralai/Mistral-7B-Instruct-v0.3-SpclSpclSpcl-struq-sep-none/gpt-4_judgement_on_mtbench.jsonl mistralai/Mistral-7B-Instruct-v0.3-TextTextTextMistral-instfuse-sep-none-newdata-dpo/gpt-4_judgement_on_mtbench.jsonl mistralai/Mistral-7B-Instruct-v0.3-TextTextTextMistral-ise-sep-none/gpt-4_judgement_on_mtbench.jsonl mistralai/Mistral-7B-Instruct-v0.3-TextTextTextMistral-possep-sep-none/gpt-4_judgement_on_mtbench.jsonl mistralai/Mistral-7B-Instruct-v0.3-log/gpt-4_judgement_on_mtbench.jsonl \
+    --labels-b "SecAlign" "StruQ" "Ours" "ISE" "PFT" "Undefended" --out debug.png
+    :return:
+    '''
     parser = argparse.ArgumentParser()
     # Group A (left subplot: LLaMA-8B)
-    parser.add_argument("--inputs-a", type=str, nargs="+", required=True, help="左图 (LLaMA-8B) 的 *_judgement_on_mtbench.jsonl 列表")
-    parser.add_argument("--labels-a", type=str, nargs="+", help="左图图例名（与 --inputs-a 数量一致）")
+    parser.add_argument("--inputs-a", type=str, nargs="+", required=True, help="LHS model list")
+    parser.add_argument("--labels-a", type=str, nargs="+", help="LHS model IDs, same length as --input-a")
     # Group B (right subplot: Mistral-7B)
-    parser.add_argument("--inputs-b", type=str, nargs="+", required=True, help="右图 (Mistral-7B) 的 *_judgement_on_mtbench.jsonl 列表")
-    parser.add_argument("--labels-b", type=str, nargs="+", help="右图图例名（与 --inputs-b 数量一致）")
+    parser.add_argument("--inputs-b", type=str, nargs="+", required=True, help="RHS model list")
+    parser.add_argument("--labels-b", type=str, nargs="+", help="RHS model IDs, same length as --input-b")
 
-    parser.add_argument("--axes", type=str, default="", help="指定 5 个类别（逗号分隔）；留空则从两组合计出现最多的 5 类中选")
-    parser.add_argument("--vmax", type=float, default=10.0, help="分数最大值（默认 10 分制）")
-    parser.add_argument("--out", type=str, default="pentagon_radar_1x2.png", help="输出图片名")
-    parser.add_argument("--title-a", type=str, default="LLaMA-8B", help="左图标题（将以 italic 显示）")
-    parser.add_argument("--title-b", type=str, default="Mistral-7B", help="右图标题（将以 italic 显示）")
-    parser.add_argument("--palette", type=str, default="okabe", choices=["okabe", "pastel"], help="配色：okabe 或 pastel")
-    parser.add_argument("--qfile", type=str, default="datasets/mtbench.jsonl", help="MT-Bench 题目文件路径")
-    parser.add_argument("--single-only", action="store_true", help="仅使用单轮（turn==1 & 排除 multi-turn judge）")
+    parser.add_argument("--axes", type=str, default="", help="5 reasoning types")
+    parser.add_argument("--vmax", type=float, default=10.0, help="max score")
+    parser.add_argument("--out", type=str, default="pentagon_radar_1x2.png", help="out file")
+    parser.add_argument("--title-a", type=str, default="LLaMA-8B", help="LHS title")
+    parser.add_argument("--title-b", type=str, default="Mistral-7B", help="RHS title")
+    parser.add_argument("--palette", type=str, default="okabe", choices=["okabe", "pastel"], help="color palette")
+    parser.add_argument("--qfile", type=str, default="datasets/mtbench.jsonl", help="MT-Bench file path")
+    parser.add_argument("--single-only", action="store_true", help="single-turn evaluation only")
     parser.add_argument("--k-axes", type=int, default=-1,
-                        help="轴数量；5=五边雷达；<=0 表示使用全部类别")
+                        help="number of axes；5=full；<=0 all")
 
     parser.set_defaults(single_only=True)
     args = parser.parse_args()
 
     if args.labels_a and len(args.labels_a) != len(args.inputs_a):
-        raise ValueError("--labels-a 数量需与 --inputs-a 相同")
+        raise ValueError("--labels-a length shall be equal to --inputs-a")
     if args.labels_b and len(args.labels_b) != len(args.inputs_b):
-        raise ValueError("--labels-b 数量需与 --inputs-b 相同")
+        raise ValueError("--labels-b length shall be equal to --inputs-b")
 
     qid2cat = load_qid2cat(args.qfile)
     palette = OKABE_ITO if args.palette == "okabe" else PASTEL
