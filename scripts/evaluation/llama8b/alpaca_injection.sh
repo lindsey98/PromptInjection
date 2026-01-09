@@ -1,9 +1,9 @@
 #!/bin/bash
-source /home/ruofan/anaconda3/etc/profile.d/conda.sh
+# Source Conda configuration
+source ~/anaconda3/etc/profile.d/conda.sh
 conda activate prompt  # Replace with your actual env name
 
 set -euo pipefail
-IFS=$'\n\t'
 
 # === Prompt for CUDA device ===
 read -p "Enter CUDA device ID to use (default: 0): " CUDA_ID
@@ -16,6 +16,7 @@ else
 fi
 [ "$NGPUS" -ge 1 ] || NGPUS=1
 
+# Calculate device IDs cyclically
 DEV0=$(( (CUDA_ID + 0) % NGPUS ))
 DEV1=$(( (CUDA_ID + 1) % NGPUS ))
 DEV2=$(( (CUDA_ID + 2) % NGPUS ))
@@ -24,7 +25,6 @@ DEV4=$(( (CUDA_ID + 4) % NGPUS ))
 DEV5=$(( (CUDA_ID + 5) % NGPUS ))
 
 echo "GPU mapping → dev0:$DEV0  dev1:$DEV1  dev2:$DEV2  dev3:$DEV3  dev4:$DEV4 dev5:$DEV5  (NGPUS=$NGPUS)"
-
 
 # === Prompt for model_name_or_path ===
 read -p "Enter model_name_or_path: " MODEL_PATH
@@ -65,26 +65,19 @@ else
     echo "No special model type detected → Running without extra flags"
 fi
 
-# === Run command ===
-echo "Executing test..."
-CMD_BASE="python -m testing.test --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+# === Define Common Arguments ===
+COMMON_ARGS="--model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
-CMD0="CUDA_VISIBLE_DEVICES=$DEV0 $CMD_BASE --attack ignore_0 ignore_1 ignore_2 ignore_3 ignore_4"
-CMD1="CUDA_VISIBLE_DEVICES=$DEV1 $CMD_BASE --attack ignore_5 ignore_6 ignore_7 ignore_8 ignore_9 ignore_10"
-CMD2="CUDA_VISIBLE_DEVICES=$DEV2 $CMD_BASE --attack completion_real completion_realcmb completion_real_chinese completion_real_spanish completion_real_base64 completion_other"
-CMD3="CUDA_VISIBLE_DEVICES=$DEV3 $CMD_BASE --attack completion_othercmb completion_close_1hash completion_close_2hash completion_close_0hash completion_close_upper completion_close_title"
-CMD4="CUDA_VISIBLE_DEVICES=$DEV4 $CMD_BASE --attack completion_close_nospace completion_close_nocolon completion_close_typo completion_close_similar completion_close_ownlower completion_close_owntitle"
-CMD5="CUDA_VISIBLE_DEVICES=$DEV5 $CMD_BASE --attack naive completion_close_ownhash completion_close_owndouble escape_separation escape_deletion hackaprompt"
+# === Define Tasks ===
+task0() { CUDA_VISIBLE_DEVICES=$DEV0 python -m testing.test $COMMON_ARGS --attack ignore_0 ignore_1 ignore_2 ignore_3 ignore_4; }
+task1() { CUDA_VISIBLE_DEVICES=$DEV1 python -m testing.test $COMMON_ARGS --attack ignore_5 ignore_6 ignore_7 ignore_8 ignore_9 ignore_10; }
+task2() { CUDA_VISIBLE_DEVICES=$DEV2 python -m testing.test $COMMON_ARGS --attack completion_real completion_realcmb completion_real_chinese completion_real_spanish completion_real_base64 completion_other; }
+task3() { CUDA_VISIBLE_DEVICES=$DEV3 python -m testing.test $COMMON_ARGS --attack completion_othercmb completion_close_1hash completion_close_2hash completion_close_0hash completion_close_upper completion_close_title; }
+task4() { CUDA_VISIBLE_DEVICES=$DEV4 python -m testing.test $COMMON_ARGS --attack completion_close_nospace completion_close_nocolon completion_close_typo completion_close_similar completion_close_ownlower completion_close_owntitle; }
+task5() { CUDA_VISIBLE_DEVICES=$DEV5 python -m testing.test $COMMON_ARGS --attack naive completion_close_ownhash completion_close_owndouble escape_separation escape_deletion hackaprompt; }
 
 echo
-echo "⚙ Running in parallel:"
-echo "[$DEV0] $CMD0"
-echo "[$DEV1] $CMD1"
-echo "[$DEV2] $CMD2"
-echo "[$DEV3] $CMD3"
-echo "[$DEV4] $CMD4"
-echo "[$DEV5] $CMD5"
-echo
+echo "⚙ Running in parallel..."
 
 cleanup() {
   echo "⚠ Caught termination signal → killing children..."
@@ -96,12 +89,14 @@ trap cleanup SIGINT SIGTERM EXIT
 # Execute in parallel
 # -----------------------------
 set +e  # allow background jobs to fail without killing the script immediately
-bash -lc "$CMD0" & pid0=$!
-bash -lc "$CMD1" & pid1=$!
-bash -lc "$CMD2" & pid2=$!
-bash -lc "$CMD3" & pid3=$!
-bash -lc "$CMD4" & pid4=$!
-bash -lc "$CMD5" & pid5=$!
+
+# Execute functions in background
+task0 & pid0=$!
+task1 & pid1=$!
+task2 & pid2=$!
+task3 & pid3=$!
+task4 & pid4=$!
+task5 & pid5=$!
 
 # Wait and collect statuses
 wait $pid0; s0=$?

@@ -84,6 +84,7 @@ class BaseAttack:
             max_tokens=100,
             temperature=0.0,
             pass_expert_labels=config.pass_expert_labels,
+            add_bypass_loss=config.add_bypass_loss,
             add_attention_loss=config.add_attention_loss,
             delm_ids=config.delm_ids,
             num_labels=config.num_labels

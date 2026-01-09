@@ -1,7 +1,9 @@
 #!/bin/bash
+# Source Conda configuration
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate prompt  # Replace with your actual env name
 
 set -euo pipefail
-IFS=$'\n\t'
 
 # === Prompt for CUDA device ===
 read -p "Enter CUDA device ID to use (default: 0): " CUDA_ID
@@ -48,14 +50,15 @@ fi
 
 # === Run command ===
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack none"
+
+CMD_ARGS="--model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack none"
 
 echo
 echo "⚙ Running:"
-echo "$CMD"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test $CMD_ARGS"
 echo
 
 # -----------------------------
 # Execute
 # -----------------------------
-eval $CMD
+CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test $CMD_ARGS

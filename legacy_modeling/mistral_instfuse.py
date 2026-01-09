@@ -234,12 +234,18 @@ class MistralForCausalLMFuse(transformers.MistralForCausalLM):
             if (not is_generation) and (self.config.residual): # for newly generated token, do not add the instruction semantic
                 batch_idx = torch.arange(batch_size, device=hidden_states.device)  # (B,)
 
-                if past_inst_hidden_states is not None: # load cached last instruction hidden states
+                if past_inst_hidden_states is not None:
                     last_inst = past_inst_hidden_states.to(hidden_states.device)
                 else:
-                    last_inst_indices = _get_last_indices(self.instruct_label, expert_labels) # (B,)
-                    last_inst = hidden_states[batch_idx, last_inst_indices]  # (B, H)
-                    past_inst_hidden_states = last_inst.clone().detach().cpu()
+                    last_inst_indices = _get_last_indices(self.instruct_label, expert_labels)
+
+                    # Prevent having -1
+                    safe_indices = last_inst_indices.clamp(min=0)
+                    last_inst = hidden_states[batch_idx, safe_indices]
+                    invalid_mask = (last_inst_indices == -1).unsqueeze(-1)  # (B, 1)
+                    last_inst = last_inst.masked_fill(invalid_mask, 0.0)
+
+                    past_inst_hidden_states = last_inst.clone().detach()
 
                 end_indices = _get_last_indices(self.response_label, expert_labels) # (B,)
                 end_state   = hidden_states[batch_idx, end_indices]  # (B, H)

@@ -64,6 +64,7 @@ class TransformersModel:
         system_message: str | None = None,
         dtype: str = "float32",
         pass_expert_labels: bool = False,
+        add_bypass_loss: bool = False,
         add_attention_loss: bool = False,
         delm_ids: Tuple[TokenIds | None, TokenIds | None, TokenIds | None] = (None, None, None),
         num_labels: int = 3
@@ -131,8 +132,10 @@ class TransformersModel:
         self.num_fixed_tokens: int = 0
         self.default_eval_input: EvalInput | None = None
         self.pass_expert_labels = pass_expert_labels
+        self.add_bypass_loss = add_bypass_loss
         self.add_attention_loss = add_attention_loss
         # L_total = L_target + attention_loss_weight * L_attention
+        self.bypass_loss_weight = 10 # L2 norm after representation editing projection is small
         self.attention_loss_weight = 100 # attention scores are small
         self._current_optim_slice = None
 
@@ -348,6 +351,34 @@ class TransformersModel:
             num_queries=num_samples
         )
 
+    def _compute_bypass_loss(
+            self,
+            input_embeds: torch.Tensor,
+            optim_slice: slice | torch.Tensor,
+            projection_module: torch.nn.Module,
+    ) -> torch.Tensor:
+        """
+        Computes the bypass loss: L_bypass = || g(e(x_adv)) ||_2^2 = || e(x_adv)W + b ||_2^2
+        """
+        # Extract embeddings for the adversarial suffix (optim_slice)
+        if isinstance(optim_slice, slice):
+            suffix_embeds = input_embeds[:, optim_slice, :]
+        elif isinstance(optim_slice, torch.Tensor):
+            suffix_embeds = input_embeds[:, optim_slice, :]
+        else:
+            return torch.tensor(0.0, device=input_embeds.device)
+
+        # Apply projection g(e) = eW + b
+        # projection_module is expected to be a nn.Linear or equivalent
+        projected = projection_module(suffix_embeds)
+
+        # Compute squared L2 norm
+        # ||z||_2^2 = sum(z_i^2) over the hidden dimension
+        # We average over batch and sequence length to keep loss scale consistent
+        loss = torch.sum(projected ** 2, dim=-1).mean()
+
+        return loss
+
     def _compute_attention_loss_from_attns(
         self,
         last_layer_attn: torch.Tensor,
@@ -461,6 +492,16 @@ class TransformersModel:
             )
             loss = loss.sum(dim=-1).mean(dim=1)
 
+        if self.add_bypass_loss:
+            # === Add Bypass Loss ===
+            optim_slice = getattr(self, "_current_optim_slice", None)
+            bypass_loss = self._compute_bypass_loss(
+                input_embeds=input_embeds,
+                optim_slice=optim_slice,
+                projection_module=self.model.model.deinstruction_shift,
+            )
+            loss = loss + self.bypass_loss_weight * bypass_loss
+
         if self.add_attention_loss and attentions is not None:
             last_layer_attn = attentions[-1][:num_samples]
             seq_len     = logits.shape[1]
@@ -541,6 +582,14 @@ class TransformersModel:
             loss_logits = logits[:, loss_slice].squeeze(0)
             ce_loss     = F.cross_entropy(loss_logits / temperature, target_ids)
 
+            # === Add Bypass Loss ===
+            if self.add_bypass_loss:
+                bypass_loss = self._compute_bypass_loss(
+                    input_embeds=input_embeds,
+                    optim_slice=optim_slice,
+                    projection_module=self.model.model.deinstruction_shift,
+                )
+                loss = ce_loss + self.bypass_loss_weight * bypass_loss
             if self.add_attention_loss and attentions is not None:
                 last_layer_attn = attentions[-1]  # (1, H, T, S)
                 seq_len         = logits.shape[1]
