@@ -8,6 +8,7 @@ from config import PROMPT_FORMAT
 import os
 from tqdm import tqdm
 from difflib import SequenceMatcher
+from attacks import *
 
 def extract_overlap(s1, s2):
     match = SequenceMatcher(None, s1, s2).find_longest_match(0, len(s1), 0, len(s2))
@@ -81,8 +82,8 @@ def format_prompt(elem: Dict, template: Dict, mode: str = 'data_with_probe', att
             "instruction": elem["system_prompt_clean"],
             "input": elem["prompt_clean"]
         }
-        injected_prompt = extract_overlap(data_point["prompt_instructed"],
-                                                  data_point["system_prompt_instructed"])
+        injected_prompt = extract_overlap(elem["prompt_instructed"],
+                                          elem["system_prompt_instructed"])
         attack_method = eval(attack)
         d_item = attack_method(d_item, injected_prompt)
     else:
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
     parser.add_argument('--data_path', type=str, default="./datasets/SEP_dataset.json")
-    parser.add_argument('-a', '--attack', type=str, default=['completion_real', 'completion_realcmb'],
+    parser.add_argument('-a', '--attack', type=str, default=["none"],
                         choices=["none",
                                  "inject_pos_0", "inject_pos_10", "inject_pos_20", "inject_pos_30", "inject_pos_40",
                                  "inject_pos_50", "inject_pos_60", "inject_pos_70", "inject_pos_80", "inject_pos_90", "inject_pos_100",

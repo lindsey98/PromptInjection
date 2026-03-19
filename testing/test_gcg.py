@@ -24,7 +24,7 @@ from gcg.log import setup_logger
 from gcg.utils import Message, Role, SuffixManager, get_nonascii_toks
 from gcg.eval_input import LengthMismatchError
 import logging
-from legacy_modeling import LlamaFuseConfig, LlamaForCausalLMFuse, LlamaMoEConfig, LlamaForCausalLMMoE, \
+from modeling import LlamaFuseConfig, LlamaForCausalLMFuse, LlamaMoEConfig, LlamaForCausalLMMoE, \
     LlamaForCausalLMMoEV2, MistralFuseConfig, MistralForCausalLMFuse, MistralMoEConfig, MistralForCausalLMMoE, \
     MistralForCausalLMMoEV2
 import transformers
@@ -268,20 +268,6 @@ def test_model_output(
     return in_resp / n, begin / n, exact / n, outs
 
 
-def eval_func(adv_suffix, messages):
-    inst, data = messages[1].content.split(f'\n\n{data_delm}\n')
-    return test_model_output([
-        prompt_template.format_map({
-            "instruction": inst,
-            "input": data + ' ' + adv_suffix
-        })
-    ],
-        model,
-        tokenizer,
-        frontend_delimiters,
-        pass_expert_labels=args.pass_expert_labels
-    )
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
@@ -386,6 +372,21 @@ if __name__ == "__main__":
         )
 
     cfg    = setup_gcg_configs(args)
+
+    def eval_func(adv_suffix, messages):
+        inst, data = messages[1].content.split(f'\n\n{data_delm}\n')
+        return test_model_output([
+            prompt_template.format_map({
+                "instruction": inst,
+                "input": data + ' ' + adv_suffix
+            })
+        ],
+            model,
+            tokenizer,
+            frontend_delimiters,
+            pass_expert_labels=args.pass_expert_labels
+        )
+
     attack = GCGAttack(
         config=cfg,
         model=model,
@@ -416,12 +417,15 @@ if __name__ == "__main__":
             # Subtract 1 for the header
             lines = [line for line in f if line.strip()]
             if len(lines) > 0:
-                start_index = len(lines) - 1
-                file_mode = "a"  # Append mode
-                print(f"Resuming from index {start_index} (found {start_index} completed samples).")
-            else:
-                # File exists but is empty/corrupt
-                file_mode = "w"
+                # Subtract 1 for the header row to get number of completed data rows
+                completed = len(lines) - 1
+                if completed > 0:
+                    start_index = completed
+                    file_mode = "a"  # Append mode
+                    print(f"Resuming from index {start_index} (found {start_index} completed samples).")
+                else:
+                    # Only header present, start fresh in append mode
+                    file_mode = "a"
 
     in_response = 0
     begin_with = 0
@@ -476,7 +480,3 @@ if __name__ == "__main__":
 
     with open(summary_path, "a") as outfile:
         outfile.write(f"GCG\t{in_response}\t{begin_with}\t{args.defense}_{TEST_INJECTED_WORD}\n")
-
-
-
-

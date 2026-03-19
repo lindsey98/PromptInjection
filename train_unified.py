@@ -37,10 +37,25 @@ from modeling.llama_instsep import (
     LlamaForCausalLMMoEV2,
 )
 
+from modeling.qwen_instfuse import (
+    Qwen3FuseConfig,
+    Qwen3ForCausalLMFuse,
+    Qwen3ForCausalLMNoFuse,
+    Qwen3ForCausalLMConcatFuse,
+    Qwen3ForCausalLMEmbeddingShift,
+)
+
+from modeling.qwen_instsep import (
+    Qwen3MoEConfig,
+    Qwen3ForCausalLMMoE,
+    Qwen3ForCausalLMMoEV2,
+)
+
 from config import DEFAULT_TOKENS, SPECIAL_DELM_TOKENS
 
 logger = logging.get_logger(__name__)
 os.environ.setdefault("WANDB_WATCH", "all")
+
 
 def pick_llama_model(arch: str):
     if arch == "fuse":
@@ -57,6 +72,7 @@ def pick_llama_model(arch: str):
         return LlamaMoEConfig, LlamaForCausalLMMoEV2
     raise ValueError(f"Unsupported LLaMA arch: {arch}")
 
+
 def pick_mistral_model(arch: str):
     if arch == "fuse":
         return MistralFuseConfig, MistralForCausalLMFuse
@@ -66,10 +82,27 @@ def pick_mistral_model(arch: str):
         return MistralMoEConfig, MistralForCausalLMMoEV2
     raise ValueError(f"Unsupported Mistral arch: {arch}")
 
+
+def pick_qwen_model(arch: str):
+    if arch == "fuse":
+        return Qwen3FuseConfig, Qwen3ForCausalLMFuse
+    if arch == "nofuse":
+        return Qwen3FuseConfig, Qwen3ForCausalLMNoFuse
+    if arch == "concatfuse":
+        return Qwen3FuseConfig, Qwen3ForCausalLMConcatFuse
+    if arch == "embeddingshift":
+        return Qwen3FuseConfig, Qwen3ForCausalLMEmbeddingShift
+    if arch == "ise":
+        return Qwen3MoEConfig, Qwen3ForCausalLMMoE
+    if arch == "possep":
+        return Qwen3MoEConfig, Qwen3ForCausalLMMoEV2
+    raise ValueError(f"Unsupported Qwen3 arch: {arch}")
+
+
 def build_lora_config(objective: str, arch: str) -> LoraConfig:
     if objective in ("dpo", "sft") and arch in ("fuse", "nofuse", "concatfuse", "embeddingshift"):
         modules = ["embed_tokens", "lm_head", "deinstruction_shift"]
-    elif arch in ("ise"):
+    elif arch in ("ise",):
         modules = ["lm_head", "embed_tokens", "input_shifts"]
     else:
         modules = ["lm_head", "embed_tokens"]
@@ -79,6 +112,7 @@ def build_lora_config(objective: str, arch: str) -> LoraConfig:
         bias="none",
         task_type="CAUSAL_LM",
         target_modules="all-linear",
+        exclude_modules=modules,
         modules_to_save=modules
     )
 
@@ -87,7 +121,7 @@ def main(argv: Optional[List[str]] = None):
     # Stage 1: route by objective/arch
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--objective", choices=["dpo", "sft", "secalign_dpo", "struq_sft"], required=True)
-    parser.add_argument("--model-family", choices=["llama", "mistral"], required=False, default="base")
+    parser.add_argument("--model-family", choices=["llama", "mistral", "qwen"], required=False, default="base")
     parser.add_argument("--arch", required=True,
                         choices=["base", "fuse", "nofuse", "concatfuse", "embeddingshift", "ise", "possep"])
     known, remaining = parser.parse_known_args(argv)
@@ -104,11 +138,11 @@ def main(argv: Optional[List[str]] = None):
         model_args, data_args, training_args, attack_args = hf_parser.parse_args_into_dataclasses(remaining)
 
     data_args.attack = getattr(attack_args, "attack", None)
-    logger.info(f"Objective={known.objective} | Family={getattr(known,'model_family', 'base')} | Arch={known.arch}")
-    print("\\n\\n" + training_args.output_dir + "\\n\\n")
+    logger.info(f"Objective={known.objective} | Family={getattr(known, 'model_family', 'base')} | Arch={known.arch}")
+    print("\n\n" + training_args.output_dir + "\n\n")
 
     # ------------------
-    # Create model + tokenizer
+    # Create tokenizer
     # ------------------
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
@@ -117,11 +151,12 @@ def main(argv: Optional[List[str]] = None):
         padding_side=getattr(model_args, "padding_side", "right"),
         use_fast=True,
     )
-    # Add special delimiter tokens when available (as in train.py & secalign.py)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
 
-    # For 'base' arch or secalign/orpo, use AutoModelForCausalLM
+    # ------------------
+    # Create model
+    # ------------------
     if known.arch == "base" or known.objective in ("secalign_dpo", "struq_sft"):
         config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path)
         model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -143,11 +178,13 @@ def main(argv: Optional[List[str]] = None):
             Cfg, Model = pick_llama_model(known.arch)
         elif known.model_family == "mistral":
             Cfg, Model = pick_mistral_model(known.arch)
+        elif known.model_family == "qwen":
+            Cfg, Model = pick_qwen_model(known.arch)
         else:
-            raise ValueError("Unsupported combination of model-family and arch.")
+            raise ValueError(f"Unsupported model-family: {known.model_family}")
 
         config = Cfg.from_pretrained(model_args.model_name_or_path)
-        model  = Model.from_pretrained(
+        model = Model.from_pretrained(
             model_args.model_name_or_path,
             ignore_mismatched_sizes=True,
             config=config,
@@ -172,7 +209,6 @@ def main(argv: Optional[List[str]] = None):
                                            data_args=data_args,
                                            frontend_delimiters=frontend_delimiters)
     elif known.objective == "secalign_dpo":
-        # secalign uses raw JSON 'train_dataset' and DPOTrainer w/ processing_class only;
         train_dataset = load_dataset('json', data_files=data_args.data_path_list, split="train")
         data_module = {"train_dataset": train_dataset, "eval_dataset": None}
     elif known.objective == "sft":
@@ -182,8 +218,7 @@ def main(argv: Optional[List[str]] = None):
                                                   downsample=getattr(training_args, "downsample", False))
         if not getattr(training_args, "downsample", True) and getattr(training_args, "lr_scale", True):
             training_args.learning_rate /= data_module["train_dataset"].data_copy_count
-    else:  # sft-orig
-        # choose the "orig" variant to match train.py behavior
+    else:  # struq_sft
         data_module = make_supervised_data_module_orig(tokenizer=tokenizer,
                                                        data_args=data_args,
                                                        frontend_delimiters=frontend_delimiters,
@@ -194,14 +229,14 @@ def main(argv: Optional[List[str]] = None):
     # ------------------
     # Trainer selection
     # ------------------
-    if known.objective == "dpo": # DPO trainer
+    if known.objective == "dpo":
         trainer = DPOTrainerOurs(
             model=model,
             processing_class=tokenizer,
             args=training_args,
             **data_module
         )
-    elif known.objective == "secalign_dpo": # DPO but secalign objective
+    elif known.objective == "secalign_dpo":
         trainer = DPOTrainer(
             model,
             args=training_args,
@@ -209,7 +244,7 @@ def main(argv: Optional[List[str]] = None):
             **data_module,
         )
     else:  # SFT objective
-        if known.arch in ("ise"):
+        if known.arch in ("ise",):
             trainer_class = SFTTrainerISE
         elif known.arch in ("fuse", "nofuse", "concatfuse", "embeddingshift"):
             trainer_class = SFTTrainerOurs
@@ -229,9 +264,19 @@ def main(argv: Optional[List[str]] = None):
         trainer.model.print_trainable_parameters()
     trainer.train()
 
-    trainer.model.save_pretrained(training_args.output_dir)
+    # ------------------------------------------------------------------ #
+    # Save
+    # merge_and_unload() folds LoRA deltas back into the base weights so
+    # the saved checkpoint is a standalone model — no adapter needed at
+    # inference time. This also correctly handles modules_to_save weights.
+    # ------------------------------------------------------------------ #
+    print("Merging LoRA weights into base model...")
+    merged_model = trainer.model.merge_and_unload()
+
+    merged_model.save_pretrained(training_args.output_dir)
     tokenizer.save_pretrained(training_args.output_dir)
-    trainer.model.config.save_pretrained(training_args.output_dir)
+    merged_model.config.save_pretrained(training_args.output_dir)
+    print(f"Saved merged model to {training_args.output_dir}")
 
 
 if __name__ == "__main__":

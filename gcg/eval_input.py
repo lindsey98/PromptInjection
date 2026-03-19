@@ -63,6 +63,8 @@ class EvalInput:
     def _check_label_ids(
         expert_labels, optim_slice: slice, target_slice: slice, loss_slice: slice
     ) -> None:
+        if expert_labels is None:
+            return
         if expert_labels.ndim != 1:
             raise ValueError(f"dynamic_input_ids must be 1D tensor! Got {expert_labels.shape}.")
         label_len = len(expert_labels)

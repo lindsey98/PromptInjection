@@ -205,7 +205,7 @@ class TransformersModel:
             self.delm_ids[0], self.delm_ids[1], self.delm_ids[2],
             self.num_labels
         )
-        if isinstance(prefix_cache, Tuple) and len(prefix_cache) == 2:
+        if isinstance(prefix_cache, tuple) and len(prefix_cache) == 2:
             self.prefix_cache, self.num_fixed_tokens = prefix_cache[0], num_fixed_tokens
             self.prefix_cache_inst_states = prefix_cache[1]
         else:
@@ -619,7 +619,7 @@ class TransformersModel:
                     optim_slice=optim_slice,
                     projection_module=self.model.model.deinstruction_shift,
                 )
-                loss = ce_loss + self.bypass_loss_weight * bypass_loss
+                loss = loss + self.bypass_loss_weight * bypass_loss
 
             if self.add_attention_loss and attentions is not None:
                 last_layer_attn = attentions[-1]  # (1, H, T, S)
@@ -632,7 +632,7 @@ class TransformersModel:
                 )
                 del attentions
                 attn_loss = attn_loss_vec.mean()
-                loss = ce_loss + self.attention_loss_weight * attn_loss
+                loss = loss + self.attention_loss_weight * attn_loss
 
             # Cancellation Loss (Anti-Anchor)
             # This drives h_out to be opposite to h_instr (-1).
@@ -643,9 +643,7 @@ class TransformersModel:
                     suffix_end = optim_slice.stop
                     h_out = last_hidden[:, suffix_end - 1, :]  # (batch, hidden)
                     cos_sim = F.cosine_similarity(h_out, h_instr, dim=-1).mean()
-                    loss = ce_loss + self.cancellation_loss_weight * cos_sim
-                else:
-                    loss = ce_loss
+                    loss = loss + self.cancellation_loss_weight * cos_sim
 
             embed_grads = torch.autograd.grad(outputs=[loss], inputs=[input_embeds])[0]
             gc.collect()

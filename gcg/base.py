@@ -213,10 +213,10 @@ class BaseAttack:
     def _filter_suffixes(self, adv_suffix_ids: BatchTokenIds) -> tuple[BatchTokenIds, int]:
         """Filter out invalid adversarial suffixes."""
         skipped_suffixes = None
-        if self._skip_visited:
-            skipped_suffixes = self._visited_suffixes
-        elif self._skip_seen:
+        if self._skip_seen and not self._skip_visited:
             skipped_suffixes = self._seen_suffixes
+        elif self._skip_visited:
+            skipped_suffixes = self._visited_suffixes
 
         is_valid = self._model.filter_suffixes(
             suffix_ids=adv_suffix_ids, skipped_suffixes=skipped_suffixes
@@ -312,7 +312,7 @@ class BaseAttack:
         )
         eval_input.to("cuda")
         optim_slice = eval_input.optim_slice
-        passed = True
+        passed = False
 
         for i in range(self._num_steps):
             self._step = i
@@ -361,7 +361,6 @@ class BaseAttack:
             losses = self._compute_suffix_loss(eval_input)
             idx = losses[:num_valid].argmin()
             adv_suffix = adv_suffixes[idx]
-            loss = losses[idx].item()
             current_loss = losses[idx].item()
 
             # Save the best candidate and update visited suffixes
@@ -372,7 +371,7 @@ class BaseAttack:
                 # Logging
                 self._num_queries += 1
                 result = self._eval_func(adv_suffix, messages)
-                passed = result[1] == 0
+                passed = result[1] == 1
                 self.log(
                     log_dict={
                         "loss": current_loss,
@@ -388,7 +387,7 @@ class BaseAttack:
             gc.collect()
             torch.cuda.empty_cache()
 
-            if not passed:
+            if passed:
                 logger.info("Attack succeeded! Early stopping...")
                 self._best_suffix = adv_suffix
                 break
@@ -408,9 +407,10 @@ class BaseAttack:
             best_loss=self._best_loss,
             best_suffix=self._best_suffix,
             num_queries=self._num_queries,
-            success=not passed,
+            success=passed,
         )
-        self._step += 1
+        if self._step is not None:
+            self._step += 1
         return attack_result
 
     def format(self, d, tab=0):
@@ -424,7 +424,7 @@ class BaseAttack:
 
     def log(self, step: int | None = None, log_dict: dict[str, Any] | None = None) -> None:
         """Log data using logger from a single step."""
-        step = step or self._step
+        step = self._step if step is None else step
         log_dict["mem"] = torch.cuda.max_memory_allocated() / 1e9
         log_dict["time_per_step_s"] = (time.time() - self._start_time) / (step + 1)
         log_dict["queries"] = self._num_queries

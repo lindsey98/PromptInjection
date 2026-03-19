@@ -90,6 +90,8 @@ class LlamaDecoderLayer(transformers.models.llama.modeling_llama.LlamaDecoderLay
             return hidden_states
 
 class LlamaModel(transformers.LlamaModel):
+    _no_split_modules = ["LlamaDecoderLayer"]
+
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.config = config

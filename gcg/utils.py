@@ -23,10 +23,12 @@ logger = logging.getLogger(__name__)
 from copy import deepcopy
 from transformers.cache_utils import DynamicCache
 
+
 class Role(Enum):
     USER = 1
     ASSISTANT = 2
     SYSTEM = 3
+
 
 @dataclass
 class Message:
@@ -71,7 +73,8 @@ class SuffixManager:
         "raw",
         "tinyllama",
         "struq",
-        "bipia"
+        "bipia",
+        "metasecalign"
     )
 
     def __init__(self, *, tokenizer, use_system_instructions, conv_template):
@@ -98,9 +101,9 @@ class SuffixManager:
         non_empty = [(True if self.tokenizer.decode([token]) != '' else False) for token in self.sep_tokens]
         self.num_tok_sep = len(self.sep_tokens)
 
-        #self.sep_tokens = self.sep_tokens[non_empty]
+        # self.sep_tokens = self.sep_tokens[non_empty]
         # if self.num_tok_sep is wrong, low ASR is observed with no error in running and debugging
-        #print(self.tokenizer(self.conv_template.sep, add_special_tokens=False).input_ids)#; exit()
+        # print(self.tokenizer(self.conv_template.sep, add_special_tokens=False).input_ids)#; exit()
         if self.conv_template.name == "chatgpt":
             # Space is subsumed by following token in GPT tokenizer
             assert self.conv_template.sep == " ", self.conv_template.sep
@@ -111,15 +114,15 @@ class SuffixManager:
             # self.num_tok_sep because sep is just "".
             # https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py#L167
             self.num_tok_sep = 1
-        #elif self.conv_template.name == "struq":
-            # Somehow "\n\n" sep in Alpaca is tokenized to 3 tokens instead of 2.
-            # This requires a manual fix here.
+        # elif self.conv_template.name == "struq":
+        # Somehow "\n\n" sep in Alpaca is tokenized to 3 tokens instead of 2.
+        # This requires a manual fix here.
         #    self.num_tok_sep = 2
         elif self.conv_template.name == "bipia":
             # Somehow "\n\n" sep in Alpaca is tokenized to 3 tokens instead of 2.
             # This requires a manual fix here.
             # \n\n sep is tokenized to 2 in llama3
-            self.num_tok_sep = 2 # change to 1 for llama3
+            self.num_tok_sep = 2  # change to 1 for llama3
         self.num_tok_sep2 = 0
         if self.conv_template.sep2 not in (None, ""):
             self.num_tok_sep2 = len(
@@ -127,17 +130,17 @@ class SuffixManager:
             )
         if self.conv_template.stop_str not in (None, ""):
             self.num_tok_sep2 += 1
-        
+
         print('num_tok_sep:', self.num_tok_sep)
         print('num_tok_sep2:', self.num_tok_sep2)
 
     @torch.no_grad()
     def get_input_ids(
-        self,
-        messages: list[Message],
-        adv_suffix: str | None = None,
-        target: str | None = None,
-        static_only: bool = False,
+            self,
+            messages: list[Message],
+            adv_suffix: str | None = None,
+            target: str | None = None,
+            static_only: bool = False,
     ) -> tuple[torch.Tensor, slice, slice, slice]:
         """Turn messages into token ids. Run once for attack step.
 
@@ -187,15 +190,16 @@ class SuffixManager:
                 user_msg = messages[3].content
             # user msg
             self.conv_template.append_message(self.conv_template.roles[0], user_msg)
-        
-        sep = deepcopy(self.conv_template.sep); self.conv_template.sep = ''
+
+        sep = deepcopy(self.conv_template.sep);
+        self.conv_template.sep = ''
         toks = self.tokenizer(self.conv_template.get_prompt()).input_ids + \
                self.tokenizer(' ', add_special_tokens=False).input_ids + \
                self.sep_tokens
-               
+
         ### toks: ...Print exactly 'hacked!' \n\n
         num_static_tokens = len(toks)
-        
+
         if user_msg:
             num_static_tokens -= self.num_tok_sep
         elif self.conv_template.name == "vicuna_v1.1":
@@ -226,7 +230,7 @@ class SuffixManager:
                self.tokenizer(adv_suffix, add_special_tokens=False).input_ids + \
                self.sep_tokens
         optim_slice = slice(num_static_tokens, len(toks) - self.num_tok_sep)
-        
+
         toks = self.tokenizer(self.conv_template.get_prompt()).input_ids + \
                self.tokenizer(' ', add_special_tokens=False).input_ids + \
                self.tokenizer(adv_suffix, add_special_tokens=False).input_ids + \
@@ -243,8 +247,8 @@ class SuffixManager:
                self.tokenizer('\n' + target, add_special_tokens=False).input_ids + \
                self.tokenizer(self.tokenizer.eos_token, add_special_tokens=False).input_ids
 
-        target_slice = slice(assistant_role_slice.stop,     len(toks) - self.num_tok_sep2)
-        loss_slice   = slice(assistant_role_slice.stop - 1, len(toks) - self.num_tok_sep2 - 1)
+        target_slice = slice(assistant_role_slice.stop, len(toks) - self.num_tok_sep2)
+        loss_slice = slice(assistant_role_slice.stop - 1, len(toks) - self.num_tok_sep2 - 1)
 
         # Don't need final sep tokens
         input_ids = torch.tensor(toks[: target_slice.stop])
@@ -253,16 +257,16 @@ class SuffixManager:
 
     @torch.no_grad()
     def gen_eval_inputs(
-        self,
-        messages: list[Message],
-        suffix: str,
-        target: str,
-        user_seperator: TokenIds,
-        data_seperator: TokenIds,
-        response_seperator: TokenIds,
-        num_labels: int,
-        num_fixed_tokens: int = 0,
-        max_target_len: int | None = None,
+            self,
+            messages: list[Message],
+            suffix: str,
+            target: str,
+            user_seperator: TokenIds,
+            data_seperator: TokenIds,
+            response_seperator: TokenIds,
+            num_labels: int,
+            num_fixed_tokens: int = 0,
+            max_target_len: int | None = None,
     ) -> EvalInput:
         """Generate inputs for evaluation. Run once for each sample
 
@@ -275,8 +279,9 @@ class SuffixManager:
 
         out = self.get_input_ids(messages, suffix, target)
         orig_input_ids, optim_slice, target_slice, loss_slice = out
-        orig_expert_labels = compute_expert_labels(orig_input_ids, user_seperator, data_seperator, response_seperator, num_labels)
-        #print(optim_slice, optim_slice.start, optim_slice.stop)
+        orig_expert_labels = compute_expert_labels(orig_input_ids, user_seperator, data_seperator, response_seperator,
+                                                   num_labels)
+        # print(optim_slice, optim_slice.start, optim_slice.stop)
         if max_target_len is not None:
             # Adjust target slice to be at most max_target_len
             end = min(target_slice.stop, target_slice.start + max_target_len)
@@ -290,7 +295,7 @@ class SuffixManager:
             optim_slice.start - num_fixed_tokens,
             optim_slice.stop - num_fixed_tokens,
         )
-        #print(optim_slice, optim_slice.start, optim_slice.stop); exit()
+        # print(optim_slice, optim_slice.start, optim_slice.stop); exit()
         target_slice = slice(
             target_slice.start - num_fixed_tokens,
             target_slice.stop - num_fixed_tokens,
@@ -326,9 +331,9 @@ def _simple_template(messages: list[Message]):
 
 
 def build_prompt(
-    messages: list[Message],
-    template_name: str | None = None,
-    return_openai_chat_format: bool = False,
+        messages: list[Message],
+        template_name: str | None = None,
+        return_openai_chat_format: bool = False,
 ):
     if template_name is None:
         return _simple_template(messages)
@@ -349,7 +354,6 @@ def build_prompt(
     if return_openai_chat_format:
         return conv.to_openai_api_messages()
     return conv.get_prompt()
-
 
 
 def get_nonascii_toks(tokenizer, device="cpu") -> torch.Tensor:
@@ -379,6 +383,7 @@ def get_nonascii_toks(tokenizer, device="cpu") -> torch.Tensor:
 
     return torch.tensor(non_ascii_toks, device=device)
 
+
 def batchify_kv_cache(prefix_cache: DynamicCache, batch_size):
     batch_prefix_cache = []
     for k, v in prefix_cache:
@@ -386,21 +391,20 @@ def batchify_kv_cache(prefix_cache: DynamicCache, batch_size):
     return batch_prefix_cache
 
 
-
 def get_prefix_cache(
-    suffix_manager: SuffixManager,
-    model,
-    tokenizer,
-    messages: list[Message],
-    pass_expert_labels: bool,
-    user_seperator: TokenIds,
-    data_seperator: TokenIds,
-    response_seperator: TokenIds,
-    num_labels: int
-) -> PrefixCache:
-
+        suffix_manager: SuffixManager,
+        model,
+        tokenizer,
+        messages: list[Message],
+        pass_expert_labels: bool,
+        user_seperator: TokenIds,
+        data_seperator: TokenIds,
+        response_seperator: TokenIds,
+        num_labels: int
+) -> tuple[PrefixCache, int]:
     static_input_ids = suffix_manager.get_input_ids(messages, static_only=True)
-    expert_labels    = compute_expert_labels(static_input_ids, user_seperator, data_seperator, response_seperator, num_labels)
+    expert_labels = compute_expert_labels(static_input_ids, user_seperator, data_seperator, response_seperator,
+                                          num_labels)
     static_input_str = tokenizer.decode(
         static_input_ids,
         skip_special_tokens=False,
@@ -413,8 +417,8 @@ def get_prefix_cache(
     device = next(model.parameters()).device
 
     with torch.no_grad():
-        embed_layer   = model.get_input_embeddings()
-        input_embeds  = embed_layer(static_input_ids.to(device)).unsqueeze(0)
+        embed_layer = model.get_input_embeddings()
+        input_embeds = embed_layer(static_input_ids.to(device)).unsqueeze(0)
         expert_labels = expert_labels.to(device).unsqueeze(0)
         if pass_expert_labels:
             outputs = model(inputs_embeds=input_embeds,

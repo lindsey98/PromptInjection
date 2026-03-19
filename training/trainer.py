@@ -112,6 +112,11 @@ class DPOTrainerOurs(DPOTrainer):
             return logp_sum, chosen_logits
         return logp_sum
 
+    def _safe_gather(self, tensor):
+        return self.accelerator.gather_for_metrics(
+            tensor.detach().to(torch.float32).contiguous()
+        ).mean().item()
+
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         metrics = {}
 
@@ -182,30 +187,31 @@ class DPOTrainerOurs(DPOTrainer):
 
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
         prefix = "train"
-        metrics[f"{prefix}rewards/chosen"]     = self.accelerator.gather_for_metrics(chosen_rewards).mean().item()
-        metrics[f"{prefix}rewards/rejected"]   = self.accelerator.gather_for_metrics(rejected_rewards).mean().item()
-        metrics[f"{prefix}rewards/accuracies"] = self.accelerator.gather_for_metrics(reward_accuracies).mean().item()
-        metrics[f"{prefix}rewards/margins"] = (
-            self.accelerator.gather_for_metrics(chosen_rewards - rejected_rewards).mean().item()
-        )
-        metrics[f"{prefix}logps/chosen"] = (
-            self.accelerator.gather_for_metrics(chosen_logps).detach().mean().item()
-        )
-        metrics[f"{prefix}logps/rejected"] = (
-            self.accelerator.gather_for_metrics(rejected_logps).detach().mean().item()
-        )
-        metrics[f"{prefix}logits/chosen"] = (
-            self.accelerator.gather_for_metrics(chosen_mean_logits).detach().mean().item()
-        )
-        metrics[f"{prefix}logits/rejected"] = (
-            self.accelerator.gather_for_metrics(rejected_mean_logits).detach().mean().item()
-        )
+        # metrics[f"{prefix}rewards/chosen"] = self._safe_gather(chosen_rewards)
+        # metrics[f"{prefix}rewards/rejected"] = self._safe_gather(rejected_rewards)
+        # metrics[f"{prefix}rewards/margins"] = self._safe_gather(chosen_rewards - rejected_rewards)
+
+        # metrics[f"{prefix}rewards/margins"] = (
+        #     self.accelerator.gather_for_metrics(chosen_rewards - rejected_rewards).mean().item()
+        # )
+        # metrics[f"{prefix}logps/chosen"] = (
+        #     self.accelerator.gather_for_metrics(chosen_logps).detach().mean().item()
+        # )
+        # metrics[f"{prefix}logps/rejected"] = (
+        #     self.accelerator.gather_for_metrics(rejected_logps).detach().mean().item()
+        # )
+        # metrics[f"{prefix}logits/chosen"] = (
+        #     self.accelerator.gather_for_metrics(chosen_mean_logits).detach().mean().item()
+        # )
+        # metrics[f"{prefix}logits/rejected"] = (
+        #     self.accelerator.gather_for_metrics(rejected_mean_logits).detach().mean().item()
+        # )
 
         loss = losses.mean()
         # Make sure to move the loss to the device the original accumulating loss is at back in the `Trainer` class:
         loss = loss.to(self.args.device)
-        self.store_metrics(metrics, train_eval="train")
-
+        # self.store_metrics(metrics, train_eval="train")
+        loss = loss.detach().clone().to(torch.float32)
         if return_outputs:
             return loss, metrics
 

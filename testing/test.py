@@ -26,6 +26,13 @@ from config import (
 from modeling import LlamaForCausalLMFuse, LlamaForCausalLMNoFuse, LlamaForCausalLMConcatFuse, LlamaForCausalLMEmbeddingShift, \
     LlamaForCausalLMMoE, LlamaForCausalLMMoEV2, LlamaMoEConfig, LlamaFuseConfig
 from modeling import MistralForCausalLMFuse, MistralForCausalLMFuseV2, MistralForCausalLMMoE, MistralForCausalLMMoEV2, MistralMoEConfig, MistralFuseConfig
+from modeling import (
+    Qwen3FuseConfig,
+    Qwen3ForCausalLMFuse,
+    Qwen3MoEConfig,
+    Qwen3ForCausalLMMoE,
+    Qwen3ForCausalLMMoEV2,
+)
 import re
 from typing import Optional
 from transformers import StoppingCriteria, StoppingCriteriaList
@@ -59,6 +66,9 @@ REGISTRY: Dict[str, Tuple[type, type]] = {
     "MistralForCausalLMFuse": (MistralFuseConfig, MistralForCausalLMFuse),
     "MistralForCausalLMMoE": (MistralMoEConfig, MistralForCausalLMMoE),
     "MistralForCausalLMMoEV2": (MistralMoEConfig, MistralForCausalLMMoEV2),
+    "Qwen3ForCausalLMFuse": (Qwen3FuseConfig, Qwen3ForCausalLMFuse),
+    "Qwen3ForCausalLMMoE": (Qwen3MoEConfig, Qwen3ForCausalLMMoE),
+    "Qwen3ForCausalLMMoEV2": (Qwen3MoEConfig, Qwen3ForCausalLMMoEV2),
 }
 
 def load_model_and_tokenizer(
@@ -104,7 +114,8 @@ def load_model_and_tokenizer(
     return model, tok
 
 def load_delimiters(model_name: str, path: str) -> str:
-    if model_name in DELIMITERS: return model_name
+    if model_name in DELIMITERS:
+        return model_name
     for s,k in [
         ("SpclSpclSpcl","SpclSpclSpcl"),
         ("TextTextTextMistral","TextTextTextMistral"),
@@ -374,7 +385,7 @@ def test_parser():
                         choices=['none', 'sandwich', 'reminder', 'fakecompletion', 'thinkintervene',
                                  'spotlight_delimit', 'spotlight_datamark', 'spotlight_encode'],
                         help='Baseline test-time zero-shot prompting defense')
-    parser.add_argument('--data_path', type=str, default='datasets/davinci_003_outputs.json')
+    parser.add_argument('--data_path', type=str, default='datasets/gpt4o_outputs.json')
     parser.add_argument('--openai_config_path', type=str, default='datasets/openai_configs.yaml')
     parser.add_argument("--sample_ids", type=int, nargs="+", default=None,
                         help='Sample ids to test in GCG, None for testing all samples')
