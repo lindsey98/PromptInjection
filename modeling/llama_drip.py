@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask, create_masks_for_generate
 from transformers.processing_utils import Unpack
 from transformers.utils import TransformersKwargs
-from data_generation.data_loader import compute_expert_labels_from_input_ids
+from data_generation.sft_data_loader import compute_expert_labels_from_input_ids
 import inspect
 logger = logging.get_logger(__name__)
 
@@ -43,7 +43,7 @@ def _get_first_indices(label_index: int, expert_labels: torch.LongTensor) -> tor
     return first_indices
 
 
-class LlamaFuseConfig(LlamaConfig):
+class LlamaDRIPConfig(LlamaConfig):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_experts   = kwargs.get('num_experts', 4)
@@ -62,7 +62,7 @@ class LlamaFuseConfig(LlamaConfig):
 
 
 def set_delimiter_ids_in_config(
-    config: LlamaFuseConfig,
+    config: LlamaDRIPConfig,
     tokenizer,
     inst_delm: str,
     data_delm: str,
@@ -316,8 +316,6 @@ class LlamaModelEmbeddingShift(transformers.LlamaModel):
 
         hidden_states = inputs_embeds
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
-        # --- Auto-compute expert_labels if not provided externally -----------
-        # Priority: explicit argument > auto-compute from input_ids > None
         if expert_labels is None:
             expert_labels = self._auto_expert_labels(input_ids)
         # ---------------------------------------------------------------------
@@ -351,12 +349,12 @@ class LlamaModelEmbeddingShift(transformers.LlamaModel):
         )
 
 
-class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
+class LlamaForCausalLMDRIP(transformers.LlamaForCausalLM):
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
     _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
 
-    def __init__(self, config: LlamaFuseConfig):
+    def __init__(self, config: LlamaDRIPConfig):
         super().__init__(config)
         del self.model
         self.model      = LlamaModel(config)
@@ -458,27 +456,26 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self,
-        input_ids: torch.LongTensor,
-        past_key_values: Optional[Cache] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        **kwargs,
+            self,
+            input_ids,
+            past_key_values=None,
+            attention_mask=None,
+            inputs_embeds=None,
+            cache_position=None,
+            **kwargs
     ):
+
         model_inputs = super().prepare_inputs_for_generation(
             input_ids=input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
             cache_position=cache_position,
-            **kwargs
+            **kwargs,
         )
 
-        # expert_labels: still accepted from caller for backwards-compat
-        # (e.g. GCG passes them explicitly via inputs_embeds path).
-        # When delimiter ids are in config, they are NOT needed here —
-        # the model will auto-compute them inside forward().
+        # expert_labels: accepted from caller for backwards-compat (GCG inputs_embeds path).
+        # When delimiter ids are in config, NOT needed — model auto-computes in forward().
         expert_labels = kwargs.pop("expert_labels", None)
         if expert_labels is not None:
             position_ids_key = "decoder_position_ids" if self.config.is_encoder_decoder else "position_ids"
@@ -497,7 +494,7 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
 
     def _update_model_kwargs_for_generation(
         self,
-        outputs: ModelOutput,
+        outputs: CausalLMFuseOutputWithPast,
         model_kwargs: Dict[str, Any],
         is_encoder_decoder: bool = False,
         standardize_cache_format: bool = False,
@@ -516,9 +513,9 @@ class LlamaForCausalLMFuse(transformers.LlamaForCausalLM):
 
 
 
-class LlamaForCausalLMNoFuse(LlamaForCausalLMFuse):
+class LlamaForCausalLMNoFuse(LlamaForCausalLMDRIP):
 
-    def __init__(self, config: LlamaFuseConfig):
+    def __init__(self, config: LlamaDRIPConfig):
         super().__init__(config)
         self.post_init()
 
@@ -574,9 +571,9 @@ class LlamaForCausalLMNoFuse(LlamaForCausalLMFuse):
         )
 
 
-class LlamaForCausalLMConcatFuse(LlamaForCausalLMFuse):
+class LlamaForCausalLMConcatFuse(LlamaForCausalLMDRIP):
 
-    def __init__(self, config: LlamaFuseConfig):
+    def __init__(self, config: LlamaDRIPConfig):
         super().__init__(config)
         del self.residual_weight
         self.down_proj = nn.Linear(config.hidden_size, config.hidden_size // 2)
@@ -672,9 +669,9 @@ class LlamaForCausalLMConcatFuse(LlamaForCausalLMFuse):
             attentions=outputs.attentions,
         )
 
-class LlamaForCausalLMEmbeddingShift(LlamaForCausalLMFuse):
+class LlamaForCausalLMEmbeddingShift(LlamaForCausalLMDRIP):
 
-    def __init__(self, config: LlamaFuseConfig):
+    def __init__(self, config: LlamaDRIPConfig):
         super().__init__(config)
         del self.model
         self.model = LlamaModelEmbeddingShift(config)

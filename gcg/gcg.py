@@ -55,7 +55,6 @@ class GCGAttack(BaseAttack):
         )
         return num_coords
 
-    @torch.no_grad()
     def _compute_grad(self, eval_input: EvalInput, **kwargs) -> torch.Tensor:
         _ = kwargs  # unused
         grad = self._model.compute_grad(

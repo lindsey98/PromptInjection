@@ -21,7 +21,7 @@ import inspect
 logger = logging.get_logger(__name__)
 
 
-class MistralFuseConfig(MistralConfig):
+class MistralDRIPConfig(MistralConfig):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_experts       = kwargs.get('num_experts', 4)
@@ -165,12 +165,12 @@ class MistralModel(transformers.MistralModel):
         )
 
 
-class MistralForCausalLMFuse(transformers.MistralForCausalLM):
+class MistralForCausalLMDRIP(transformers.MistralForCausalLM):
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
     _pp_plan = {"lm_head": (["hidden_states"], ["logits"])}
 
-    def __init__(self, config: MistralFuseConfig):
+    def __init__(self, config: MistralDRIPConfig):
         super().__init__(config)
         del self.model
         self.model           = MistralModel(config)

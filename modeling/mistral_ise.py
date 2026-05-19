@@ -24,13 +24,13 @@ class MistralISEConfig(MistralConfig):
         self.apply_input_shifts        = kwargs.get('apply_input_shifts', True)
         self.apply_intermediate_shifts = kwargs.get('apply_intermediate_shifts', False)
         self.num_blocks_with_shifts    = kwargs.get('num_blocks_with_shifts', 1)
-        self.num_experts               = kwargs.get('num_experts', 4)
+        self.num_experts               = kwargs.get('num_experts', 3)
         self.d_gap                     = kwargs.get('d_gap', 512)
         # Delimiter token IDs for runtime expert_label computation
         self.data_delm_ids     = kwargs.get('data_delm_ids', None)
         self.response_delm_ids = kwargs.get('response_delm_ids', None)
         self.inst_delm_ids     = kwargs.get('inst_delm_ids', None)
-        self.num_labels        = kwargs.get('num_labels', 4)
+        self.num_labels        = kwargs.get('num_labels', 3)
         self.instruct_label    = kwargs.get('instruct_label',  0 if self.num_labels == 3 else 1)
         self.data_label        = kwargs.get('data_label',      1 if self.num_labels == 3 else 2)
         self.response_label    = kwargs.get('response_label',  self.num_labels - 1)
@@ -63,7 +63,6 @@ def _resolve_expert_labels(
             "so they can be auto-computed from input_ids)."
         )
     return None
-
 
 
 class MistralModel(transformers.MistralModel):
@@ -122,9 +121,6 @@ class MistralModel(transformers.MistralModel):
         hidden_states       = inputs_embeds
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
-        # Auto-compute expert_labels if not provided
-        expert_labels = _resolve_expert_labels(input_ids, expert_labels, self.config, require=True)
-
         if self.apply_input_shifts:
             shifts        = self.input_shifts(expert_labels)
             hidden_states = hidden_states + shifts
@@ -179,7 +175,8 @@ class MistralForCausalLMISE(transformers.MistralForCausalLM):
         **kwargs: Unpack[TransformersKwargs],
     ) -> CausalLMOutputWithPast:
 
-        expert_labels = _resolve_expert_labels(input_ids, expert_labels, self.config, require=True)
+        if expert_labels is None:
+            expert_labels = _resolve_expert_labels(input_ids, expert_labels, self.config, require=True)
 
         outputs: BaseModelOutputWithPast = self.model(
             input_ids=input_ids,
@@ -219,108 +216,61 @@ class MistralForCausalLMISE(transformers.MistralForCausalLM):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ):
-        model_inputs  = {}
         expert_labels = kwargs.pop("expert_labels", None)
 
-        input_ids_key = "decoder_input_ids" if self.config.is_encoder_decoder else "input_ids"
-
-        if inputs_embeds is not None and past_key_values is None:
-            model_inputs["inputs_embeds"] = inputs_embeds
-        else:
-            model_inputs[input_ids_key] = input_ids
-
-        if past_key_values is not None:
-            model_inputs["past_key_values"] = past_key_values
-        if cache_position is not None:
-            model_inputs["cache_position"] = cache_position
-
-        encoder_attention_mask = attention_mask if self.config.is_encoder_decoder else None
-        attention_mask = (
-            kwargs.pop("decoder_attention_mask", None) if self.config.is_encoder_decoder else attention_mask
+        model_inputs = super().prepare_inputs_for_generation(
+            input_ids,
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            cache_position=cache_position,
+            **kwargs,
         )
-        attention_mask_key = "decoder_attention_mask" if self.config.is_encoder_decoder else "attention_mask"
-        position_ids_key   = "decoder_position_ids"   if self.config.is_encoder_decoder else "position_ids"
-        if (
-            attention_mask is not None
-            and kwargs.get(position_ids_key) is None
-            and position_ids_key in set(inspect.signature(self.forward).parameters.keys())
-        ):
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            kwargs[position_ids_key] = position_ids
-            if expert_labels is not None:
-                expert_labels = expert_labels[:, -input_ids.shape[1]:]
 
-        for model_input_name in ["position_ids", "token_type_ids", "decoder_position_ids"]:
-            model_input = kwargs.get(model_input_name)
-            if model_input is not None:
-                if past_key_values is not None:
-                    current_input_length = (
-                        model_inputs["inputs_embeds"].shape[1]
-                        if model_inputs.get("inputs_embeds") is not None
-                        else model_inputs[input_ids_key].shape[1]
-                    )
-                    model_input = model_input[:, -current_input_length:]
-                    model_input = model_input.clone(memory_format=torch.contiguous_format)
-                model_inputs[model_input_name] = model_input
+        # Align expert_labels with the (possibly trimmed) input_ids
+        actual_input_ids = model_inputs.get("input_ids")
+        if actual_input_ids is None:
+            return model_inputs
+        cur_len = actual_input_ids.shape[1]
+        batch_size = actual_input_ids.shape[0]
 
-        if (
-            isinstance(past_key_values, Cache)
-            and past_key_values.is_compileable
-            and attention_mask is not None
-            and attention_mask.ndim == 2
-        ):
-            if not self.config.is_encoder_decoder and model_inputs.get("inputs_embeds") is not None:
-                batch_size, sequence_length, _ = model_inputs["inputs_embeds"].shape
-            else:
-                batch_size, sequence_length = model_inputs[input_ids_key].shape[:2]
+        is_decode_step = (
+                past_key_values is not None
+                and past_key_values.get_seq_length() > 0
+        )
 
-            base_model = getattr(self, self.base_model_prefix, self)
-            decoder    = base_model.get_decoder() if hasattr(base_model, "get_decoder") else None
-            causal_mask_creation_function = getattr(
-                base_model, "_prepare_4d_causal_attention_mask_with_cache_position", None
+        if is_decode_step:
+            # New tokens are model output -> they belong to the response section.
+            new_labels = torch.full(
+                (batch_size, cur_len),
+                self.config.response_label,
+                dtype=torch.long,
+                device=actual_input_ids.device,
             )
-            if causal_mask_creation_function is None and decoder is not None:
-                causal_mask_creation_function = getattr(
-                    decoder, "_prepare_4d_causal_attention_mask_with_cache_position", None
-                )
-            if causal_mask_creation_function is None:
-                token_type_ids = model_inputs.get("token_type_ids", None)
-                position_ids   = model_inputs.get(position_ids_key, None)
-                causal_mask_creation_function = getattr(self, "create_masks_for_generate", create_masks_for_generate)
-                attention_mask = causal_mask_creation_function(
-                    config=self.config,
-                    input_embeds=torch.empty((batch_size, sequence_length), dtype=self.dtype),
-                    attention_mask=attention_mask,
-                    cache_position=cache_position,
-                    past_key_values=past_key_values,
-                    position_ids=position_ids,
-                    token_type_ids=token_type_ids,
-                )
+            if expert_labels is not None:
+                # Concatenate prompt labels with response labels for full length;
+                # but only the last `cur_len` are forwarded to the model.
+                # Since this is decode step, just send the new ones.
+                model_inputs["expert_labels"] = new_labels
             else:
-                attention_mask = causal_mask_creation_function(
-                    attention_mask,
-                    sequence_length=sequence_length,
-                    target_length=past_key_values.get_max_cache_shape(),
-                    dtype=self.dtype,
-                    cache_position=cache_position,
-                    batch_size=batch_size,
-                    config=self.config,
-                    past_key_values=past_key_values,
-                )
-
-        if attention_mask is not None:
-            model_inputs[attention_mask_key] = attention_mask
-        if encoder_attention_mask is not None:
-            model_inputs["attention_mask"] = encoder_attention_mask
-
-        for key, value in kwargs.items():
-            if key not in model_inputs:
-                model_inputs[key] = value
-
-        model_inputs.pop("labels", None)
-        if expert_labels is not None:
-            model_inputs["expert_labels"] = expert_labels
+                model_inputs["expert_labels"] = new_labels
+        else:
+            # Prefill (or no cache): align expert_labels to current input_ids
+            if expert_labels is not None:
+                if expert_labels.shape[1] > cur_len:
+                    expert_labels = expert_labels[:, -cur_len:]
+                elif expert_labels.shape[1] < cur_len:
+                    # Pad missing positions with response_label as a fallback
+                    pad = torch.full(
+                        (batch_size, cur_len - expert_labels.shape[1]),
+                        self.config.response_label,
+                        dtype=torch.long,
+                        device=actual_input_ids.device,
+                    )
+                    expert_labels = torch.cat([expert_labels, pad], dim=1)
+                model_inputs["expert_labels"] = expert_labels
+            # If expert_labels not provided, _resolve_expert_labels in forward()
+            # will auto-compute from input_ids using delimiter ids in config.
 
         return model_inputs
 
@@ -376,7 +326,8 @@ class MistralModelV2(transformers.MistralModel):
         hidden_states = inputs_embeds
 
         # Auto-compute expert_labels if not provided
-        expert_labels = _resolve_expert_labels(input_ids, expert_labels, self.config, require=True)
+        if expert_labels is None:
+            expert_labels = _resolve_expert_labels(input_ids, expert_labels, self.config, require=True)
 
         # Add gap in positional embedding to separate instruction vs data tokens
         position_ids        = position_ids + self.d_gap * expert_labels.to(hidden_states.dtype)
