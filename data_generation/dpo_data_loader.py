@@ -5,7 +5,7 @@ from transformers import PreTrainedTokenizer
 from typing import Dict, Optional, Sequence, Union, Any, List, Tuple
 from dataclasses import dataclass, field
 from datasets import Dataset as HFDataset
-from .data_loader import jload, _tokenize_fn
+from .sft_data_loader import jload, _tokenize_fn
 
 
 def generate_training_data_dpo(data_dicts: List[Dict], prompt_dict_name: str, tokenizer: PreTrainedTokenizer
