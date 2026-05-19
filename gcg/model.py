@@ -19,6 +19,8 @@ from gcg.utils import (
     get_prefix_cache,
 )
 import gc
+from transformers.cache_utils import DynamicCache, Cache
+
 logger = logging.getLogger(__name__)
 
 Device = int | str | torch.device
@@ -113,7 +115,6 @@ class TransformersModel:
                 devices,
             )
             self.model = torch.nn.DataParallel(self.model, device_ids=devices)
-            # Should be fine to have generate run on rank 0 only
             self.model.generate = self.model.module.generate
             embed_layer = self.model.module.get_input_embeddings()
             self.embed_layer = torch.nn.DataParallel(embed_layer, device_ids=devices)
@@ -130,7 +131,6 @@ class TransformersModel:
 
         # Dictionary containing batched prefix cache (key is batch size)
         self._batch_prefix_cache: dict[int, PrefixCache] = {}
-        # Original unbatched prefix cache
         self.prefix_cache: PrefixCache | None = None
         self.prefix_cache_inst_states: PrefixCache | None = None
         self.num_fixed_tokens: int = 0
@@ -138,10 +138,8 @@ class TransformersModel:
         self.pass_expert_labels = pass_expert_labels
         self.add_bypass_loss = add_bypass_loss
         self.add_attention_loss = add_attention_loss
-        # L_total = L_target + attention_loss_weight * L_attention
-        self.bypass_loss_weight = bypass_loss_lambda # L2 norm after representation editing projection is small
-        self.attention_loss_weight = attention_loss_lambda # attention scores are small
-        # cancellation loss
+        self.bypass_loss_weight = bypass_loss_lambda
+        self.attention_loss_weight = attention_loss_lambda
         self.add_cancellation_loss = add_cancellation_loss
         self.cancellation_loss_weight = cancellation_loss_lambda
         self._current_optim_slice = None
@@ -151,27 +149,173 @@ class TransformersModel:
         self.delm_ids = delm_ids
         self.num_labels = num_labels
 
+        if self.add_attention_loss:
+            logger.info("Attention loss enabled — will compute last-layer attention manually.")
+
+    # ====================================================================== #
+    # Manual last-layer attention computation
+    # ====================================================================== #
+    def _get_last_layer_module(self):
+        """Locate the last decoder layer (handles DataParallel + custom wrappers)."""
+        base = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+        # Walk: ForCausalLM -> Model -> layers
+        if hasattr(base, "model") and hasattr(base.model, "layers"):
+            inner = base.model
+        elif hasattr(base, "layers"):
+            inner = base
+        elif hasattr(base, "model") and hasattr(base.model, "model") and hasattr(base.model.model, "layers"):
+            inner = base.model.model
+        else:
+            raise RuntimeError(f"Cannot locate .layers from {type(base)}")
+        return inner.layers[-1], inner
+
+    @staticmethod
+    def _rotate_half(x):
+        x1, x2 = x.chunk(2, dim=-1)
+        return torch.cat((-x2, x1), dim=-1)
+
+    def _apply_rope(self, q, k, position_ids, rotary_emb):
+        """Apply RoPE; handles HF API drift (>=4.43 takes position_ids, older takes seq_len)."""
+        try:
+            cos, sin = rotary_emb(q, position_ids)
+        except TypeError:
+            seq_len = int(position_ids.max().item()) + 1
+            cos, sin = rotary_emb(q, seq_len=seq_len)
+            cos = cos[position_ids]
+            sin = sin[position_ids]
+        # Normalize shape to (B, 1, T, Dh)
+        if cos.dim() == 2:
+            cos = cos.unsqueeze(0).unsqueeze(0)
+            sin = sin.unsqueeze(0).unsqueeze(0)
+        elif cos.dim() == 3:
+            cos = cos.unsqueeze(1)
+            sin = sin.unsqueeze(1)
+        cos = cos.to(q.dtype)
+        sin = sin.to(q.dtype)
+        q_embed = (q * cos) + (self._rotate_half(q) * sin)
+        k_embed = (k * cos) + (self._rotate_half(k) * sin)
+        return q_embed, k_embed
+
+    def _compute_last_layer_attn_manual(
+        self,
+        penultimate_hidden: torch.Tensor,
+        past_key_value=None,
+    ) -> torch.Tensor:
+        """
+        Manually compute the last layer's attention weights.
+
+        Args:
+            penultimate_hidden: (B, T_new, D) - input to the last decoder layer
+                                (= output of second-to-last layer)
+            past_key_value: tuple (k_prefix, v_prefix), each (B, KH, T_prefix, Dh)
+                            of the LAST layer. Pass None if no prefix cache.
+
+        Returns:
+            attn_weights: (B, H, T_new, S) where S = T_prefix + T_new.
+        """
+        last_layer, inner = self._get_last_layer_module()
+        attn_module = last_layer.self_attn
+        cfg = attn_module.config if hasattr(attn_module, "config") else self.model.config
+
+        # 1. Pre-norm (Llama uses pre-norm; same for Mistral/Qwen)
+        h = last_layer.input_layernorm(penultimate_hidden)  # (B, T_new, D)
+
+        # 2. Q, K projections
+        q = attn_module.q_proj(h)
+        k = attn_module.k_proj(h)
+
+        B, T_new, _ = q.shape
+        H = cfg.num_attention_heads
+        Dh = q.shape[-1] // H
+        KH = getattr(cfg, "num_key_value_heads", H)
+
+        q = q.view(B, T_new, H, Dh).transpose(1, 2)    # (B, H,  T_new, Dh)
+        k = k.view(B, T_new, KH, Dh).transpose(1, 2)   # (B, KH, T_new, Dh)
+
+        # 3. Determine prefix length
+        T_prefix = 0
+        k_prefix = v_prefix = None
+        if past_key_value is not None:
+            k_prefix = past_key_value[0]
+            T_prefix = k_prefix.shape[-2]
+
+        # 4. RoPE — position_ids must account for prefix
+        position_ids = torch.arange(
+            T_prefix, T_prefix + T_new, device=q.device, dtype=torch.long
+        ).unsqueeze(0).expand(B, -1)
+
+        rotary_emb = None
+        if hasattr(attn_module, "rotary_emb"):
+            rotary_emb = attn_module.rotary_emb
+        elif hasattr(inner, "rotary_emb"):
+            rotary_emb = inner.rotary_emb
+        else:
+            base = self.model.module if isinstance(self.model, torch.nn.DataParallel) else self.model
+            if hasattr(base, "model") and hasattr(base.model, "rotary_emb"):
+                rotary_emb = base.model.rotary_emb
+        assert rotary_emb is not None, "Cannot locate rotary_emb"
+
+        q, k = self._apply_rope(q, k, position_ids, rotary_emb)
+
+        # 5. Concat prefix K (already RoPE'd & cached)
+        if k_prefix is not None:
+            if k_prefix.shape[0] != B:
+                k_prefix = k_prefix.expand(B, -1, -1, -1)
+            k = torch.cat([k_prefix.to(k.dtype), k], dim=-2)  # (B, KH, S, Dh)
+
+        S = k.shape[-2]
+
+        # 6. GQA: repeat K to match H heads
+        if KH != H:
+            n_rep = H // KH
+            k = k.repeat_interleave(n_rep, dim=1)  # (B, H, S, Dh)
+
+        # 7. Scores
+        scores = torch.matmul(q, k.transpose(-1, -2)) / (Dh ** 0.5)  # (B, H, T_new, S)
+
+        # 8. Causal mask: query t (global pos T_prefix+t) attends to keys 0..T_prefix+t
+        causal_mask = torch.full((T_new, S), float("-inf"), device=q.device, dtype=scores.dtype)
+        for t in range(T_new):
+            causal_mask[t, : T_prefix + t + 1] = 0.0
+        scores = scores + causal_mask.unsqueeze(0).unsqueeze(0)
+
+        # 9. Softmax in fp32 for stability, cast back
+        attn_weights = F.softmax(scores, dim=-1, dtype=torch.float32).to(q.dtype)
+        return attn_weights  # (B, H, T_new, S)
+
+    def _get_last_layer_prefix_kv(self, batch_size: int):
+        """Extract (k, v) of the LAST layer from the batched prefix cache."""
+        prefix_cache = self._get_batch_prefix_cache(batch_size)
+        if prefix_cache is None:
+            return None
+        # Handle DynamicCache vs legacy tuple
+        if hasattr(prefix_cache, "key_cache") and hasattr(prefix_cache, "value_cache"):
+            if len(prefix_cache.key_cache) == 0:
+                return None
+            return (prefix_cache.key_cache[-1], prefix_cache.value_cache[-1])
+        # Legacy: list/tuple of (k, v) per layer
+        try:
+            return (prefix_cache[-1][0], prefix_cache[-1][1])
+        except (IndexError, TypeError):
+            return None
+
+    # ====================================================================== #
     def __call__(
         self,
         inputs: List[Message] | list[str] | torch.Tensor | None = None,
         api_key: str = None,
     ):
         if isinstance(inputs[0], Message):
-            # Turn messages into strings
             inputs = [build_prompt(inputs, self.model_name)]
         if isinstance(inputs[0], str):
-            # Turn strings to token ids
             model_inputs = self.tokenizer(inputs, return_tensors="pt", padding=True)
         else:
-            # Assume inputs are token ids
             model_inputs = {
                 "input_ids": inputs,
                 "attention_mask": torch.ones_like(inputs, dtype=torch.long),
             }
         model_inputs["input_ids"] = model_inputs["input_ids"].to(self.device, non_blocking=True)
-        model_inputs["attention_mask"] = model_inputs["attention_mask"].to(
-            self.device, non_blocking=True
-        )
+        model_inputs["attention_mask"] = model_inputs["attention_mask"].to(self.device, non_blocking=True)
         prompt_len = model_inputs["attention_mask"].sum(dim=1)
         output = self.model.generate(
             **model_inputs,
@@ -190,8 +334,9 @@ class TransformersModel:
         return [response]
 
     def _get_batch_prefix_cache(self, batch_size: int) -> PrefixCache:
-        if self.prefix_cache is None:
-            raise RuntimeError("Prefix cache has not been set!")
+        keys_to_drop = [k for k in self._batch_prefix_cache if k != batch_size]
+        for k in keys_to_drop:
+            del self._batch_prefix_cache[k]
         if batch_size not in self._batch_prefix_cache:
             self._batch_prefix_cache[batch_size] = batchify_kv_cache(self.prefix_cache, batch_size)
         return self._batch_prefix_cache[batch_size]
@@ -211,7 +356,6 @@ class TransformersModel:
             self.prefix_cache_inst_states = prefix_cache[1]
         else:
             self.prefix_cache, self.num_fixed_tokens = prefix_cache, num_fixed_tokens
-        # Reset batched prefix cache
         self._batch_prefix_cache = {}
 
     def filter_suffixes(
@@ -220,7 +364,6 @@ class TransformersModel:
         suffix: list[str] | None = None,
         skipped_suffixes: set | None = None,
     ) -> torch.Tensor:
-        """Filter suffixes using all models."""
         _, orig_len = suffix_ids.shape
         device = suffix_ids.device
         assert (suffix_ids is not None) ^ (suffix is not None), "Either suffix_ids OR suffix must be provided but not both!"
@@ -284,7 +427,6 @@ class TransformersModel:
         expert_labels = eval_input.expert_labels
         device = self.device
 
-        # Record the currect suffix position，for later computing the attention loss
         self._current_optim_slice = optim_slice
 
         if max_target_len is not None:
@@ -311,7 +453,6 @@ class TransformersModel:
         expert_labels       = expert_labels.to(device)
         batch_expert_labels = expert_labels.repeat(batch_size, 1)
 
-        # Expand and repeat batch dimension
         if targets.ndim == 1:
             targets = targets.unsqueeze(0)
         if targets.shape[0] == 1:
@@ -322,7 +463,6 @@ class TransformersModel:
         loss_list = []
         logits_list = []
         for i in range(num_batches):
-            # Update suffixes
             batch_suffix_ids = suffix_ids[i * batch_size : (i + 1) * batch_size]
             batch_targets    = targets[i * batch_size : (i + 1) * batch_size]
             batch_suffix_ids = batch_suffix_ids.to(device, non_blocking=True)
@@ -365,26 +505,12 @@ class TransformersModel:
             optim_slice: slice | torch.Tensor,
             projection_module: torch.nn.Module,
     ) -> torch.Tensor:
-        """
-        Computes the bypass loss: L_bypass = || g(e(x_adv)) ||_2^2 = || e(x_adv)W + b ||_2^2
-        """
-        # Extract embeddings for the adversarial suffix (optim_slice)
-        if isinstance(optim_slice, slice):
-            suffix_embeds = input_embeds[:, optim_slice, :]
-        elif isinstance(optim_slice, torch.Tensor):
+        if isinstance(optim_slice, (slice, torch.Tensor)):
             suffix_embeds = input_embeds[:, optim_slice, :]
         else:
             return torch.tensor(0.0, device=input_embeds.device)
-
-        # Apply projection g(e) = eW + b
-        # projection_module is expected to be a nn.Linear or equivalent
         projected = projection_module(suffix_embeds)
-
-        # Compute squared L2 norm
-        # ||z||_2^2 = sum(z_i^2) over the hidden dimension
-        # We average over batch and sequence length to keep loss scale consistent
         loss = torch.sum(projected ** 2, dim=-1).mean()
-
         return loss
 
     def _compute_attention_loss_from_attns(
@@ -394,27 +520,23 @@ class TransformersModel:
         optim_slice: slice | torch.Tensor | None,
         seq_len: int,
     ) -> torch.Tensor:
-        B, H, T, S = last_layer_attn.shape # (batch, num_heads, seq_len, src_len)
-        assert T == seq_len, f"Expected seq_len={seq_len}, got {T}"
+        B, H, T, S = last_layer_attn.shape
+        assert T == seq_len, f"Expected seq_len={seq_len}, got T={T}"
         device = last_layer_attn.device
-        attn   = last_layer_attn.mean(dim=1) # average over heads, (batch, seq_len, src_len)
+        attn   = last_layer_attn.mean(dim=1)  # (B, T, S)
 
         if isinstance(loss_slice, slice):
             out_idx = torch.arange(seq_len, device=device)[loss_slice]
         elif isinstance(loss_slice, torch.Tensor) and loss_slice.dim() == 1:
             out_idx = loss_slice.to(device)
         else:
-            out_idx = torch.arange(seq_len, device=device) # dummy
+            out_idx = torch.arange(seq_len, device=device)
 
-        # taking the output tokens (newly generated) as the query
-        attn_out = attn[:, out_idx, :]
-        token_scores = attn_out.mean(dim=1) # (batch, src_len)
+        attn_out = attn[:, out_idx, :]            # (B, |loss_slice|, S)
+        token_scores = attn_out.mean(dim=1)       # (B, S)
 
-        prefix_len = S - seq_len
-        if prefix_len < 0:
-            prefix_len = 0
+        prefix_len = max(S - seq_len, 0)
 
-        # taking the suffix tokens as the key
         if optim_slice is None:
             suffix_idx_local = torch.arange(seq_len, device=device)
         elif isinstance(optim_slice, slice):
@@ -424,14 +546,10 @@ class TransformersModel:
         else:
             suffix_idx_local = torch.arange(seq_len, device=device)
 
-        suffix_idx_global = prefix_len + suffix_idx_local # kick out the indices before the suffix tokens
-        suffix_idx_global = suffix_idx_global.clamp(0, S - 1)
-
+        suffix_idx_global = (prefix_len + suffix_idx_local).clamp(0, S - 1)
         suffix_scores = token_scores[:, suffix_idx_global]
         s_adv = suffix_scores.mean(dim=1)
-
-        # want to increase the attention scores assigned to the suffix tokens
-        attn_loss = -s_adv
+        attn_loss = -s_adv  # maximize attention to suffix
         return attn_loss
 
     def _compute_loss(
@@ -447,42 +565,34 @@ class TransformersModel:
         num_samples = num_samples or len(batch_input_ids)
         input_embeds = self.embed_layer(batch_input_ids)
         need_attn = self.add_attention_loss
+        need_hidden = self.add_cancellation_loss or need_attn
 
+        common_kwargs = dict(
+            inputs_embeds=input_embeds,
+            past_key_values=self._get_batch_prefix_cache(len(batch_input_ids)),
+            use_cache=True,
+            output_attentions=False,
+            output_hidden_states=need_hidden,
+        )
         if self.pass_expert_labels:
+            common_kwargs["expert_labels"] = batch_expert_labels
             if self.prefix_cache_inst_states is not None:
-                outputs = self.model(
-                    inputs_embeds=input_embeds,
-                    expert_labels=batch_expert_labels,
-                    past_key_values=self._get_batch_prefix_cache(len(batch_input_ids)),
-                    past_inst_hidden_states=self.prefix_cache_inst_states,
-                    use_cache=True,
-                    output_attentions=need_attn,
-                    output_hidden_states=True,
+                common_kwargs["past_inst_hidden_states"] = self.prefix_cache_inst_states
+        outputs = self.model(**common_kwargs)
 
-                )
+        logits = outputs.logits[:num_samples]
 
-            else:
-                outputs = self.model(
-                    inputs_embeds=input_embeds,
-                    expert_labels=batch_expert_labels,
-                    past_key_values=self._get_batch_prefix_cache(len(batch_input_ids)),
-                    use_cache=True,
-                    output_attentions=need_attn,
-                    output_hidden_states=True,
+        # === Manual last-layer attention ===
+        last_layer_attn = None
+        if need_attn:
+            # hidden_states tuple: (embed_out, layer_0_out, ..., layer_{N-1}_out)
+            # input to last layer = output of layer_{N-2} = hidden_states[-2]
+            penult = outputs.hidden_states[-2][:num_samples]
+            last_pkv = self._get_last_layer_prefix_kv(len(batch_input_ids))
+            if last_pkv is not None:
+                last_pkv = (last_pkv[0][:num_samples], last_pkv[1][:num_samples])
+            last_layer_attn = self._compute_last_layer_attn_manual(penult, past_key_value=last_pkv)
 
-                )
-        else:
-            outputs = self.model(
-                inputs_embeds=input_embeds,
-                past_key_values=self._get_batch_prefix_cache(len(batch_input_ids)),
-                use_cache=True,
-                output_attentions=need_attn,
-                output_hidden_states=True,
-
-            )
-
-        logits     = outputs.logits[:num_samples]
-        attentions = outputs.attentions if need_attn and hasattr(outputs, "attentions") else None
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -494,12 +604,10 @@ class TransformersModel:
             loss_logits = logits.gather(1, loss_slice)
 
         if batch_targets.dtype == torch.long:
-            # Hard-label
             loss = F.cross_entropy(
                 loss_logits.permute(0, 2, 1), batch_targets, reduction="none"
             ).mean(dim=1)
         else:
-            # Soft-label
             loss = F.kl_div(
                 loss_logits.log_softmax(dim=-1),
                 batch_targets / temperature,
@@ -508,7 +616,6 @@ class TransformersModel:
             loss = loss.sum(dim=-1).mean(dim=1)
 
         if self.add_bypass_loss:
-            # === Add Bypass Loss ===
             optim_slice = getattr(self, "_current_optim_slice", None)
             bypass_loss = self._compute_bypass_loss(
                 input_embeds=input_embeds,
@@ -517,36 +624,30 @@ class TransformersModel:
             )
             loss = loss + self.bypass_loss_weight * bypass_loss
 
-        if self.add_attention_loss and attentions is not None:
-            last_layer_attn = attentions[-1][:num_samples]
+        if self.add_attention_loss and last_layer_attn is not None:
             seq_len     = logits.shape[1]
             optim_slice = getattr(self, "_current_optim_slice", None)
-
             attn_loss = self._compute_attention_loss_from_attns(
                 last_layer_attn=last_layer_attn,
                 loss_slice=loss_slice,
                 optim_slice=optim_slice,
                 seq_len=seq_len,
             )
-            del attentions
-            # L_total = L_target + w_a * L_attention
+            del last_layer_attn
             loss = loss + self.attention_loss_weight * attn_loss
 
         if self.add_cancellation_loss and hasattr(outputs, "hidden_states"):
             last_hidden = outputs.hidden_states[-1]
             if self.prefix_cache_inst_states is not None:
-                h_instr = self.prefix_cache_inst_states.mean(0).detach()  # (batch, hidden)
+                h_instr = self.prefix_cache_inst_states.mean(0).detach()
                 optim_slice = getattr(self, "_current_optim_slice", None)
                 suffix_end = optim_slice.stop
-                h_out = last_hidden[:, suffix_end - 1, :]  # (batch, hidden)
+                h_out = last_hidden[:, suffix_end - 1, :]
                 cos_sim = F.cosine_similarity(h_out, h_instr, dim=-1).mean()
                 loss = loss + self.cancellation_loss_weight * cos_sim
-            else:
-                pass
 
         return loss_logits, loss, logits, loss_slice
 
-    @torch.no_grad()
     def compute_grad(
         self,
         eval_input: EvalInput,
@@ -554,12 +655,16 @@ class TransformersModel:
         **kwargs,
     ) -> torch.Tensor:
         """Compute gradients w.r.t. `input_ids` tokens at `optim_slice`."""
-        _ = kwargs  # Unused
+        _ = kwargs
+
         input_ids = eval_input.dynamic_input_ids
         expert_labels = eval_input.expert_labels
         target_ids  = eval_input.target_ids
         optim_slice = eval_input.optim_slice
         loss_slice = eval_input.loss_slice
+
+        # ★ Ensure attention/cancellation loss reads the correct slice
+        self._current_optim_slice = optim_slice
 
         orig_device = input_ids.device
         input_ids     = input_ids.to(self.device, non_blocking=True)
@@ -573,47 +678,35 @@ class TransformersModel:
         expert_labels.unsqueeze_(0)
 
         need_attn = self.add_attention_loss
+        need_hidden = self.add_cancellation_loss or need_attn
 
         with torch.enable_grad():
-            # Forward pass
+            common_kwargs = dict(
+                inputs_embeds=input_embeds,
+                past_key_values=self._get_batch_prefix_cache(len(input_embeds)),
+                use_cache=True,
+                output_attentions=False,
+                output_hidden_states=need_hidden,
+            )
             if self.pass_expert_labels:
+                common_kwargs["expert_labels"] = expert_labels
                 if self.prefix_cache_inst_states is not None:
-                    outputs = self.model(
-                        inputs_embeds=input_embeds,
-                        expert_labels=expert_labels,
-                        past_key_values=self._get_batch_prefix_cache(len(input_embeds)),
-                        past_inst_hidden_states=self.prefix_cache_inst_states,
-                        use_cache=True,
-                        output_attentions=need_attn,
-                        output_hidden_states=True,
-                    )
-                else:
-                    outputs = self.model(
-                        inputs_embeds=input_embeds,
-                        expert_labels=expert_labels,
-                        past_key_values=self._get_batch_prefix_cache(len(input_embeds)),
-                        use_cache=True,
-                        output_attentions=need_attn,
-                        output_hidden_states=True,
-                    )
-            else:
-                outputs = self.model(
-                    inputs_embeds=input_embeds,
-                    past_key_values=self._get_batch_prefix_cache(len(input_embeds)),
-                    use_cache=True,
-                    output_attentions=need_attn,
-                    output_hidden_states=True,
-                )
+                    common_kwargs["past_inst_hidden_states"] = self.prefix_cache_inst_states
+            outputs = self.model(**common_kwargs)
 
-            logits     = outputs.logits
-            attentions = outputs.attentions if need_attn and hasattr(outputs, "attentions") else None
+            logits = outputs.logits
 
-            # Compute loss and gradients
+            # Manual last-layer attention (with grad)
+            last_layer_attn = None
+            if need_attn:
+                penult = outputs.hidden_states[-2]
+                last_pkv = self._get_last_layer_prefix_kv(len(input_embeds))
+                last_layer_attn = self._compute_last_layer_attn_manual(penult, past_key_value=last_pkv)
+
             loss_logits = logits[:, loss_slice].squeeze(0)
             ce_loss     = F.cross_entropy(loss_logits / temperature, target_ids)
             loss = ce_loss
 
-            # === Add Bypass Loss ===
             if self.add_bypass_loss:
                 bypass_loss = self._compute_bypass_loss(
                     input_embeds=input_embeds,
@@ -622,27 +715,24 @@ class TransformersModel:
                 )
                 loss = loss + self.bypass_loss_weight * bypass_loss
 
-            if self.add_attention_loss and attentions is not None:
-                last_layer_attn = attentions[-1]  # (1, H, T, S)
-                seq_len         = logits.shape[1]
+            if self.add_attention_loss and last_layer_attn is not None:
+                seq_len       = logits.shape[1]
                 attn_loss_vec = self._compute_attention_loss_from_attns(
                     last_layer_attn=last_layer_attn,
                     loss_slice=loss_slice,
                     optim_slice=optim_slice,
                     seq_len=seq_len,
                 )
-                del attentions
                 attn_loss = attn_loss_vec.mean()
                 loss = loss + self.attention_loss_weight * attn_loss
+                del last_layer_attn
 
-            # Cancellation Loss (Anti-Anchor)
-            # This drives h_out to be opposite to h_instr (-1).
-            if self.add_cancellation_loss and hasattr(outputs, "hidden_states"):
+            if self.add_cancellation_loss and hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
                 last_hidden = outputs.hidden_states[-1]
                 if self.prefix_cache_inst_states is not None:
-                    h_instr = self.prefix_cache_inst_states.mean(0).detach()  # (batch, hidden)
+                    h_instr = self.prefix_cache_inst_states.mean(0).detach()
                     suffix_end = optim_slice.stop
-                    h_out = last_hidden[:, suffix_end - 1, :]  # (batch, hidden)
+                    h_out = last_hidden[:, suffix_end - 1, :]
                     cos_sim = F.cosine_similarity(h_out, h_instr, dim=-1).mean()
                     loss = loss + self.cancellation_loss_weight * cos_sim
 

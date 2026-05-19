@@ -17,11 +17,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from gcg.eval_input import EvalInput
 from gcg.types import PrefixCache, TokenIds
-from data_generation.data_loader import compute_expert_labels_from_input_ids
+from data_generation.sft_data_loader import compute_expert_labels_from_input_ids
 
 logger = logging.getLogger(__name__)
 from copy import deepcopy
 from transformers.cache_utils import DynamicCache
+import gc
 
 
 class Role(Enum):
@@ -128,11 +129,14 @@ class SuffixManager:
             self.num_tok_sep = 2  # change to 1 for llama3
         self.num_tok_sep2 = 0
         if self.conv_template.sep2 not in (None, ""):
+            # self.num_tok_sep2 = len(
+            #     self.tokenizer(self.conv_template.sep2, add_special_tokens=False).input_ids
+            # )
             self.num_tok_sep2 = len(
-                self.tokenizer(self.conv_template.sep2, add_special_tokens=False).input_ids
+                self.tokenizer(self.tokenizer.eos_token, add_special_tokens=False).input_ids
             )
-        if self.conv_template.stop_str not in (None, ""):
-            self.num_tok_sep2 += 1
+        # if self.conv_template.stop_str not in (None, ""):
+        #     self.num_tok_sep2 += 1
 
         print('num_tok_sep:', self.num_tok_sep)
         print('num_tok_sep2:', self.num_tok_sep2)
@@ -306,6 +310,7 @@ class SuffixManager:
             toks = toks + target_ids + eos_ids
 
         target_slice = slice(assistant_role_slice.stop, len(toks) - self.num_tok_sep2)
+
         loss_slice = slice(assistant_role_slice.stop - 1, len(toks) - self.num_tok_sep2 - 1)
 
         # Don't need final sep tokens
@@ -457,6 +462,21 @@ def batchify_kv_cache(prefix_cache: DynamicCache, batch_size):
         batch_prefix_cache.append((k.repeat(batch_size, 1, 1, 1), v.repeat(batch_size, 1, 1, 1)))
     return batch_prefix_cache
 
+# def batchify_kv_cache(prefix_cache, batch_size: int) -> DynamicCache:
+#     """Repeat KV cache along batch dim. Handles DynamicCache, legacy tuple, and list."""
+#     # Convert to legacy tuple format for uniform handling
+#     if isinstance(prefix_cache, DynamicCache):
+#         legacy = prefix_cache.to_legacy_cache()  # tuple of (k, v) per layer
+#     else:
+#         legacy = prefix_cache  # already tuple/list of (k, v)
+#
+#     batched = tuple(
+#         (k.repeat(batch_size, 1, 1, 1), v.repeat(batch_size, 1, 1, 1))
+#         for k, v in legacy
+#     )
+#     # Return as DynamicCache (modern transformers expects Cache objects)
+#     return DynamicCache.from_legacy_cache(batched)
+
 
 def get_prefix_cache(
         suffix_manager: SuffixManager,
@@ -501,4 +521,6 @@ def get_prefix_cache(
         prefix_cache = outputs.past_key_values
         if "past_inst_hidden_states" in outputs:
             prefix_cache = (prefix_cache, outputs.past_inst_hidden_states)
+    gc.collect()
+    torch.cuda.empty_cache()
     return prefix_cache, num_static_tokens

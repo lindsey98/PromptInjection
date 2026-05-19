@@ -21,7 +21,7 @@ from gcg.eval_input import EvalInput, LengthMismatchError
 from gcg.model import TransformersModel
 from gcg.types import BatchTokenIds
 from gcg.utils import Message, SuffixManager
-from data_generation.data_loader import compute_expert_labels_from_input_ids
+from data_generation.sft_data_loader import compute_expert_labels_from_input_ids
 logger = logging.getLogger(__name__)
 
 
@@ -402,7 +402,9 @@ class BaseAttack:
         eval_input.suffix_ids = self._tokenizer(
             adv_suffix, add_special_tokens=False, return_tensors="pt"
         ).input_ids
-        loss = self._model.compute_suffix_loss(eval_input, batch_size=self._mini_batch_size).losses
+        loss = self._model.compute_suffix_loss(
+            eval_input, batch_size=self._mini_batch_size
+        ).losses
         self._save_best(loss.min().item(), adv_suffix)
 
         attack_result = AttackResult(
