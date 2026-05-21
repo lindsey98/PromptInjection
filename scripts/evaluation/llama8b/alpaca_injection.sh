@@ -72,12 +72,12 @@ fi
 COMMON_ARGS="--model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 # === Define Tasks ===
-task0() { CUDA_VISIBLE_DEVICES=$DEV0 python -m testing.test $COMMON_ARGS --attack ignore_0 ignore_1 ignore_2 ignore_3 ignore_4 completion_escape_ignore; }
-task1() { CUDA_VISIBLE_DEVICES=$DEV1 python -m testing.test $COMMON_ARGS --attack ignore_5 ignore_6 ignore_7 ignore_8 ignore_9 ignore_10; }
-task2() { CUDA_VISIBLE_DEVICES=$DEV2 python -m testing.test $COMMON_ARGS --attack completion_real completion_realcmb completion_real_chinese completion_real_spanish completion_real_base64 completion_other; }
-task3() { CUDA_VISIBLE_DEVICES=$DEV3 python -m testing.test $COMMON_ARGS --attack completion_othercmb completion_close_1hash completion_close_2hash completion_close_0hash completion_close_upper completion_close_title; }
-task4() { CUDA_VISIBLE_DEVICES=$DEV4 python -m testing.test $COMMON_ARGS --attack completion_close_nospace completion_close_nocolon completion_close_typo completion_close_similar completion_close_ownlower completion_close_owntitle; }
-task5() { CUDA_VISIBLE_DEVICES=$DEV5 python -m testing.test $COMMON_ARGS --attack naive completion_close_ownhash completion_close_owndouble escape_separation escape_deletion hackaprompt; }
+task0() { CUDA_VISIBLE_DEVICES=$DEV0 python -m testing.test $COMMON_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --attack ignore_0 ignore_1 ignore_2 ignore_3 ignore_4 completion_escape_ignore; }
+task1() { CUDA_VISIBLE_DEVICES=$DEV1 python -m testing.test $COMMON_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --attack ignore_5 ignore_6 ignore_7 ignore_8 ignore_9 ignore_10; }
+task2() { CUDA_VISIBLE_DEVICES=$DEV2 python -m testing.test $COMMON_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --attack completion_real completion_realcmb completion_real_chinese completion_real_spanish completion_real_base64 completion_other; }
+task3() { CUDA_VISIBLE_DEVICES=$DEV3 python -m testing.test $COMMON_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --attack completion_othercmb completion_close_1hash completion_close_2hash completion_close_0hash completion_close_upper completion_close_title; }
+task4() { CUDA_VISIBLE_DEVICES=$DEV4 python -m testing.test $COMMON_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --attack completion_close_nospace completion_close_nocolon completion_close_typo completion_close_similar completion_close_ownlower completion_close_owntitle; }
+task5() { CUDA_VISIBLE_DEVICES=$DEV5 python -m testing.test $COMMON_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --attack naive completion_close_ownhash completion_close_owndouble escape_separation escape_deletion hackaprompt; }
 
 echo
 echo "⚙ Running in parallel..."

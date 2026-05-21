@@ -46,7 +46,7 @@ else
     echo "No special model type detected → Running without extra flags"
 fi
 
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack attngcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack attngcg --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"

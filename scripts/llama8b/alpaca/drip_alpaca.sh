@@ -2,14 +2,14 @@
 
 
 SCRIPT_PATH="train_unified.py"
-BASELINE="instfuse"
-BASE_MODEL="meta-llama/Llama-3.1-8B-Instruct-log"
+BASELINE="drip"
+BASE_MODEL="meta-llama/Llama-3.1-8B-Instruct"
 DATA_PATH="datasets/alpaca_data_cleaned_dpo_gpt.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
 FSDP_CONFIG="training/config/fsdp_config.json"
 DELIMITER="TextTextText"
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-dpo"
+SAVE_PATH="${BASE_MODEL}-${DELIMITER}-alpaca-${BASELINE}"
 
 BATCH_SIZE=4
 EPOCH=1

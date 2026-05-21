@@ -104,17 +104,38 @@ def load_delimiters(model_name: str, path: str) -> str:
     raise NotImplementedError(f"Cannot infer delimiter for {path}")
 
 
-def load_full_model(model_path: str, customized_model_class: Optional[str], load_model: bool=True,
-                    device_map: Optional[int | Dict[str,int] | str]=None):
-    base = model_path.split("-SpclSpclSpcl")[0].split("-TextTextText")[0]
+def load_full_model(
+    model_path: str,
+    customized_model_class: Optional[str],
+    load_model: bool = True,
+    device_map: Optional[Union[int, Dict[str, int], str]] = None,
+    load_as_adapter: bool = False,
+    base_model_path: Optional[str] = None,
+    load_in_bnb4: bool = False,
+):
+    """Resolve base path + delimiters from model_path, then load."""
+    inferred_base = model_path.split("-SpclSpclSpcl")[0].split("-TextTextText")[0]
+    base = base_model_path or inferred_base
+
     name = os.path.basename(model_path)
-    delims = load_delimiters(name, model_path)
+    delims_key = load_delimiters(name, model_path)
     training_attacks = "NaiveCompletion"
+
     if not load_model:
-        return model_path, delims
-    model, tok = load_model_and_tokenizer(base, model_path, customized_model_class, device_map=device_map)
-    if hasattr(model, "generation_config"): model.generation_config.pad_token_id = tok.pad_token_id
-    return model, tok, delims, training_attacks
+        return model_path, delims_key
+
+    model, tok = load_model_and_tokenizer(
+        base_model_path=base,
+        trained_model_path=model_path,
+        customized_model_class=customized_model_class,
+        delims=DELIMITERS[delims_key],
+        device_map=device_map,
+        load_as_adapter=load_as_adapter,
+        load_in_bnb4=load_in_bnb4,
+    )
+    if hasattr(model, "generation_config"):
+        model.generation_config.pad_token_id = tok.pad_token_id
+    return model, tok, delims_key, training_attacks
 
 
 @torch.inference_mode()
@@ -314,6 +335,9 @@ def setup_gcg_configs(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     parser.add_argument('-a', '--attack', type=str, default='gcg',
                         choices=["gcg", "gcg_prefix", "attngcg", "bypass", "cancel"])
     parser.add_argument('--bypass_loss_lambda', type=float, default=10)
@@ -335,7 +359,9 @@ if __name__ == "__main__":
     data = [d for d in jload(args.data_path) if d["input"] != ""]
 
     model, tokenizer, frontend_delimiters, training_attacks = load_full_model(args.model_name_or_path,
-                                                                              customized_model_class=args.customized_model_class)
+                                                                              customized_model_class=args.customized_model_class,
+                                                                              base_model_path=args.base_model_path
+                                                                              )
 
     model_path = args.model_name_or_path
     log_path = f"{model_path}-log/" if not os.path.exists(model_path) else model_path

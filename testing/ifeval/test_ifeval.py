@@ -22,11 +22,15 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
     parser.add_argument('--data_path', type=str, default="./datasets/ifeval/input_data.jsonl")
     parser.add_argument('--customized_model_class', type=str, help="Customized model class", default='')
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     args = parser.parse_args()
     args.model_name_or_path = args.model_name_or_path[0]
 
     model, tokenizer, frontend_delimiters, training_attacks = load_full_model(args.model_name_or_path,
-                                                                              customized_model_class=args.customized_model_class)
+                                                                              customized_model_class=args.customized_model_class,
+                                                                              base_model_path=args.base_model_path)
     delm = DELIMITERS[frontend_delimiters]
     fmt = dict(PROMPT_FORMAT[frontend_delimiters])
     if len(delm) == 4:

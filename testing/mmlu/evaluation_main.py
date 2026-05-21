@@ -75,7 +75,7 @@ def compute_scores(results: List[Dict]) -> Dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pred_file",
-                    default="mistralai/Mistral-7B-Instruct-v0.3-SpclSpclSpcl-secalign-sep-none/predictions_on_mmlu_test.json")
+                    default="meta-llama/Meta-Llama-3-8B-Instruct-SpclSpclSpcl-struq-sep-none/predictions_on_mmlu_test.json")
     ap.add_argument("--by_subject", action="store_true",
                     help="Also print per-subject breakdown")
     ap.add_argument("--unparsed", action="store_true",

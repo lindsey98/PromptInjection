@@ -218,6 +218,9 @@ def summary_results(summary_path: str, scores: Dict,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model on MMLU')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     parser.add_argument('-d', '--defense', type=str, default='none',
                         choices=['none', 'sandwich', 'reminder', 'fakecompletion',
                                  'thinkintervene', 'spotlight_delimit',
@@ -243,6 +246,7 @@ if __name__ == "__main__":
         args.model_name_or_path,
         customized_model_class=args.customized_model_class,
         load_as_adapter=args.load_as_adapter,
+        base_model_path=args.base_model_path
     )
     from config import DELIMITERS
     _delm = DELIMITERS[frontend_delimiters]

@@ -27,13 +27,16 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMFuse --trigger_name llama-ours"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMDRIP --trigger_name llama-ours"
         ;;
     *ise*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMMoE --trigger_name llama-ise"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMISE --trigger_name llama-ise"
         ;;
     *possep*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMMoEV2 --trigger_name llama-pft"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMPFT --trigger_name llama-pft"
+        ;;
+    *air*)
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMAIR --trigger_name llama-air"
         ;;
     *secalign*)
         EXTRA_FLAGS="--trigger_name llama-secalign"
@@ -53,7 +56,7 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_neuralexec --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_neuralexec --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"

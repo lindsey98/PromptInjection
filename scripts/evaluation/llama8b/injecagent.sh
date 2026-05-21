@@ -56,7 +56,7 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.injecagent.test_injecagent --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.injecagent.test_injecagent --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"

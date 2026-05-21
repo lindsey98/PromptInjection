@@ -48,7 +48,7 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.sep.test_sep --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.sep.test_sep --base_model_path mistralai/Mistral-7B-Instruct-v0.3 --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"

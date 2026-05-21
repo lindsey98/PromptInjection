@@ -1,14 +1,14 @@
 #!/bin/bash
 
 SCRIPT_PATH="train_unified.py"
-BASELINE="instfuse"
+BASELINE="drip"
 BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct"
 DATA_PATH="datasets/sep/sep_data_cleaned_dpo_gpt.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
 FSDP_CONFIG="training/config/fsdp_config.json"
 DELIMITER="TextTextText"
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-newdata-dpo"
+SAVE_PATH="${BASE_MODEL}-${DELIMITER}-sep-${BASELINE}"
 
 BATCH_SIZE=4
 EPOCH=1

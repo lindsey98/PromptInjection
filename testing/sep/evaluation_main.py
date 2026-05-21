@@ -80,9 +80,8 @@ def get_scores(output_instruct_data: Union[list, np.ndarray],
 
 if __name__ == "__main__":
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-dpo"
-    ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-sft"
+    # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-sft"
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-origdata-dpo"
-    # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-dpo"
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-dpo-nofusion"
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-dpo-concatfusion"
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-instfuse-sep-none-newdata-dpo-embeddingshift"
@@ -91,32 +90,39 @@ if __name__ == "__main__":
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-possep-sep-none"
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-SpclSpclSpcl-struq-sep-none"
     # ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-log"
-    # ours_model_path   = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-SpclSpclSpcl-secalign-sep-none"
-    baseline_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-log"
+    # ours_model_path   = Path("meta-llama") / "Meta-SecAlign-8B-merged"
+    # ours_model_path   = Path("meta-llama") / "Llama-3.1-8B-Instruct-log-TextTextText-instfuse-alpaca-none-dpo"
+    # ours_model_path   = Path("meta-llama") / "Llama-3.1-8B-Instruct-log"
+    # ours_model_path   = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-3roles-air-sep-none"
+    # ours_model_path   = Path("meta-llama") / "Llama-3.1-8B-Instruct-log-TextTextText-instfuse-alpaca-dpo-4roles"
+    ours_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-TextTextText-3roles-instfuse-sep-none-newdata-dpo-concatfusion"
 
+    # baseline_model_path = Path("meta-llama") / "Meta-Llama-3-8B-Instruct-log"
+
+    # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-instfuse-sep-none-newdata-dpo"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-log"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-possep-sep-none"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-ise-sep-none"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-instfuse-sep-none-origdata"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-instfuse-sep-none-newdata"
-    # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-instfuse-sep-none-newdata-dpo"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-TextTextTextMistral-instfuse-sep-none-newdata-dpo-mini"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-SpclSpclSpcl-struq-sep-none"
     # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-SpclSpclSpcl-secalign-sep-none"
+    # ours_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-air-TextTextTextMistral-3roles-air-sep-none"
     # baseline_model_path = Path("mistralai") / "Mistral-7B-Instruct-v0.3-SpclSpclSpcl-secalign-sep-none"
 
-    benign_response_name   = os.path.join(ours_model_path,     f"predictions_on_sep.jsonl")
+    benign_response_name   = os.path.join(ours_model_path,     "predictions_on_sep.jsonl")
     # benign_response_name   = os.path.join(ours_model_path,     f"predictions_on_sep_sandwich.jsonl")
     # benign_response_name   = os.path.join(ours_model_path,     f"predictions_on_sep_reminder.jsonl")
     # benign_response_name   = os.path.join(ours_model_path,     f"predictions_on_sep_thinkintervene.jsonl")
     # benign_response_name   = os.path.join(ours_model_path,     f"predictions_on_sep_spotlight_delimit.jsonl")
 
-    baseline_response_name = os.path.join(baseline_model_path, f"predictions_on_sep.jsonl")
+    # baseline_response_name = os.path.join(baseline_model_path, f"predictions_on_sep.jsonl")
 
     with open(benign_response_name, 'r') as file:
         scores = json.load(file)
-    with open(baseline_response_name, 'r') as file:
-        baseline_scores = json.load(file)
+    # with open(baseline_response_name, 'r') as file:
+    #     baseline_scores = json.load(file)
 
     output_instruct_data = []
     output_instruct_task = []
@@ -200,3 +206,7 @@ if __name__ == "__main__":
         print(f"Task Type: {t}")
         for metric, val in scores_dict.items():
             print(f"  {metric}: {val}")
+
+
+    # ASR: 0.629 => 0.004
+    # Utils: 0.794 => 0.322

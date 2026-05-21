@@ -93,6 +93,9 @@ def run_pair_for_sample(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model_name_or_path", type=str, nargs="+", required=True)
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     parser.add_argument("--customized_model_class",  type=str, default="")
     parser.add_argument("--data_path", type=str, default="./datasets/davinci_003_outputs.json")
     parser.add_argument("--inject_position", type=str, default="end",
@@ -109,6 +112,7 @@ def main():
 
     model, tokenizer, frontend_delimiters, _ = load_full_model(
         args.model_name_or_path, customized_model_class=args.customized_model_class,
+        base_model_path=args.base_model_path,
     )
     delm = DELIMITERS[frontend_delimiters]
     fmt  = dict(PROMPT_FORMAT[frontend_delimiters])

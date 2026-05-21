@@ -173,6 +173,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument("--model-path", type=str, required=True, help="The path to the weights. This can be a local folder or a Hugging Face repo ID.")
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     parser.add_argument("--model-id", type=str, required=True, help="A custom name for the model.")
     parser.add_argument("--bench-name", type=str, default="mtbench", help="The name of the benchmark question set.")
     parser.add_argument("--question-begin", type=int, help="A debug option. The begin index of questions.",)
@@ -185,7 +188,8 @@ if __name__ == "__main__":
     args.model_name_or_path = args.model_path
 
     model, tokenizer, frontend_delimiters, training_attacks = load_full_model(args.model_path,
-                                                                              customized_model_class=args.customized_model_class)
+                                                                              customized_model_class=args.customized_model_class,
+                                                                              base_model_path=args.base_model_path)
 
     model_path = args.model_name_or_path
     log_path = f"{model_path}-log" if not os.path.exists(model_path) else model_path

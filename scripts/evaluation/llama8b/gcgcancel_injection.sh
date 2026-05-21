@@ -46,9 +46,9 @@ else
     echo "No special model type detected → Running without extra flags"
 fi
 
-#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack cancel --cancel_loss_lambda 10"
-#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack cancel --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --cancel_loss_lambda 20"
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack cancel --cancel_loss_lambda 50"
+#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack cancel --cancel_loss_lambda 10"
+#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack cancel --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --cancel_loss_lambda 20"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --base_model_path meta-llama/Meta-Llama-3-8B-Instruct --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack cancel --cancel_loss_lambda 50"
 
 echo
 echo "⚙ Running:"

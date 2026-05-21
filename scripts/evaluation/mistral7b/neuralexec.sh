@@ -27,13 +27,16 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMFuse --trigger_name mistral-ours"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMDRIP --trigger_name mistral-ours"
         ;;
     *ise*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMMoE --trigger_name mistral-ise"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMISE --trigger_name mistral-ise"
         ;;
     *possep*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMMoEV2 --trigger_name mistral-pft"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMPFT --trigger_name mistral-pft"
+        ;;
+    *air*)
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMAIR --trigger_name llama-air"
         ;;
     *secalign*)
         EXTRA_FLAGS="--trigger_name mistral-secalign"
@@ -53,7 +56,7 @@ else
 fi
 
 echo "Executing test..."
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_neuralexec --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_neuralexec --base_model_path mistralai/Mistral-7B-Instruct-v0.3 --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"

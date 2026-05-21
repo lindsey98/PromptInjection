@@ -58,10 +58,10 @@ CMD_ARGS="--model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack none"
 
 echo
 echo "⚙ Running:"
-echo "CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test $CMD_ARGS"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test $CMD_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct"
 echo
 
 # -----------------------------
 # Execute
 # -----------------------------
-CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test $CMD_ARGS
+CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test $CMD_ARGS --base_model_path meta-llama/Meta-Llama-3-8B-Instruct

@@ -137,25 +137,67 @@ def radar_setup(ax, labels, vmin=0, vmax=10):
     angles = np.linspace(0, 2*np.pi, N, endpoint=False).tolist()
     angles += angles[:1]
 
+    # orientation
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
     ax.set_rlabel_position(0)
-    ax.set_xticks(angles[:-1])
 
+    # ---- category labels（放远一点）----
     pretty_labels = [sentence_case(l) for l in labels]
-    ax.set_xticklabels(pretty_labels, fontsize= 20 , fontweight="bold")
+    ax.set_xticks([])  # 先关掉默认
+    radius_label = 1.10  # 控制标签离雷达的距离
 
-    ax.set_yticks([0.25, 0.5, 0.75, 1.0])
-    ax.set_yticklabels([f"{int(x*(vmax-vmin)+vmin)}" for x in [0.25, 0.5, 0.75, 1.0]], fontsize=10)
+    for angle, lab in zip(angles[:-1], pretty_labels):
+        ax.text(
+            angle,
+            radius_label,
+            lab,
+            fontsize=13,
+            fontweight="bold",
+            ha="center",
+            va="center",
+        )
+
+    # ---- radial axis ----
+    rings = [0.25, 0.5, 0.75, 1.0]
+    ax.set_yticks(rings)
+    ax.set_yticklabels(
+        [f"{int(r * (vmax - vmin) + vmin)}" for r in rings],
+        fontsize=10,
+    )
     ax.set_ylim(0, 1.0)
-    ax.grid(True, linestyle=(0, (3, 3)), color="#999999", alpha=0.6)
+
+    # 网格 & 外圈
+    ax.grid(True, linestyle=(0, (2, 2)), color="#bbbbbb", alpha=0.6)
+    ax.spines["polar"].set_linewidth(1.4)
+    ax.spines["polar"].set_color("#444444")
+
     return angles
 
-
-def plot_polygon(ax, angles, values, color, label, vmin=0, vmax=10, alpha=0.16, lw=2.5, marker=None):
+def plot_polygon(
+    ax,
+    angles,
+    values,
+    color,
+    label,
+    vmin=0,
+    vmax=10,
+    alpha=0.16,
+    lw=2.2,
+    marker="o",
+):
+    # 归一化到 [0,1]
     vals = [(v - vmin) / (vmax - vmin) if vmax > vmin else 0.0 for v in values]
     vals += vals[:1]
-    ax.plot(angles, vals, color=color, linewidth=lw, label=label, marker=marker, markersize=5)
+    ax.plot(
+        angles,
+        vals,
+        color=color,
+        linewidth=lw,
+        label=label,
+        marker=marker,
+        markersize=5,
+    )
     ax.fill(angles, vals, color=color, alpha=alpha)
 
 def build_values(inputs, qid2cat, axes_wanted, single_only, vmax):
@@ -234,43 +276,111 @@ def main():
 
     # Plot 1x2
     plt.rcParams.update({
-        "figure.dpi": 150, "savefig.dpi": 300,
-        "font.size": 12, "axes.labelweight": "bold", "axes.titleweight": "bold"
+        "font.family": ["Liberation Sans", "Nimbus Sans", "DejaVu Sans"],
+        "figure.dpi": 150,
+        "savefig.dpi": 300,
+        "font.size": 11,
+        "axes.labelweight": "bold",
+        "legend.fontsize": 9,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
     })
-    fig, axs = plt.subplots(1, 2, figsize=(14, 7),
-                            subplot_kw={"projection": "polar"})
+
+    fig, axs = plt.subplots(
+        1,
+        2,
+        figsize=(10, 5.5),
+        subplot_kw={"projection": "polar"},
+    )
+
+    palette = OKABE_ITO if args.palette == "okabe" else PASTEL
+    markers = ["o", "s", "^", "D", "P", "X"]
 
     # Left (A): LLaMA-8B
     angles_a = radar_setup(axs[0], wanted, vmin=0, vmax=args.vmax)
+    handles = []
+    labels_for_legend = []
+
     for i, vals in enumerate(vals_a):
-        label = (args.labels_a[i] if args.labels_a else os.path.basename(args.inputs_a[i]).split(".")[0])
+        label = (args.labels_a[i] if args.labels_a else
+                 os.path.basename(args.inputs_a[i]).split(".")[0])
         color = palette[i % len(palette)]
         marker = markers[i % len(markers)]
-        plot_polygon(axs[0], angles_a, vals, color, label, vmin=0, vmax=args.vmax, alpha=0.16, lw=2.6, marker=marker)
-    axs[0].set_title(args.title_a, pad=12, fontsize=20, fontstyle="italic", fontweight="bold")
-    leg0 = axs[0].legend(loc="upper right", bbox_to_anchor=(1.25, 1.10),
-                         frameon=True, ncol=1, fontsize=15)
-    for lh in leg0.legend_handles:
-        lh.set_alpha(0.9)
+        h = axs[0].plot(
+            [], [],  # dummy for legend handle
+            color=color,
+            linewidth=2.2,
+            marker=marker,
+            markersize=5,
+            label=label,
+        )[0]
+        handles.append(h)
+        labels_for_legend.append(label)
+
+        plot_polygon(
+            axs[0],
+            angles_a,
+            vals,
+            color,
+            label=None,
+            vmin=0,
+            vmax=args.vmax,
+            alpha=0.16,
+            lw=2.2,
+            marker=marker,
+        )
+
+    axs[0].set_title(
+        args.title_a,
+        pad=35,
+        fontsize=14,
+        fontstyle="italic",
+        fontweight="bold",
+    )
 
     # Right (B): Mistral-7B
     angles_b = radar_setup(axs[1], wanted, vmin=0, vmax=args.vmax)
     for i, vals in enumerate(vals_b):
-        label = (args.labels_b[i] if args.labels_b else os.path.basename(args.inputs_b[i]).split(".")[0])
+        label = (args.labels_b[i] if args.labels_b else
+                 os.path.basename(args.inputs_b[i]).split(".")[0])
         color = palette[i % len(palette)]
         marker = markers[i % len(markers)]
-        plot_polygon(axs[1], angles_b, vals, color, label, vmin=0, vmax=args.vmax, alpha=0.16, lw=2.6, marker=marker)
-    axs[1].set_title(args.title_b, pad=12, fontsize=20, fontstyle="italic", fontweight="bold")
-    leg1 = axs[1].legend(loc="upper right", bbox_to_anchor=(1.25, 1.10),
-                         frameon=True, ncol=1, fontsize=15)
-    for lh in leg1.legend_handles:
-        lh.set_alpha(0.9)
+        plot_polygon(
+            axs[1],
+            angles_b,
+            vals,
+            color,
+            label=None,
+            vmin=0,
+            vmax=args.vmax,
+            alpha=0.16,
+            lw=2.2,
+            marker=marker,
+        )
 
-    fig.tight_layout()
+    axs[1].set_title(
+        args.title_b,
+        pad=35,
+        fontsize=14,
+        fontstyle="italic",
+        fontweight="bold",
+    )
+
+    leg = fig.legend(
+        handles,
+        labels_for_legend,
+        loc="lower center",
+        ncol=min(len(handles), 3),
+        frameon=False,
+        bbox_to_anchor=(0.5, -0.02),
+        fontsize=15
+    )
+    if leg.get_title():
+        leg.get_title().set_fontweight("bold")
+
+    fig.tight_layout(rect=[0, 0.05, 1, 1])
     fig.savefig(args.out, bbox_inches="tight")
     plt.show()
-    print(f"✅ Saved 1x2 radar to {args.out}")
-    print("Axes:", wanted)
 
 if __name__ == "__main__":
     main()

@@ -108,6 +108,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     parser.add_argument('--data_path', type=str, default="./datasets/SEP_dataset.json")
     parser.add_argument('-a', '--attack', type=str, default=["none"],
                         choices=["none",
@@ -128,7 +131,8 @@ if __name__ == "__main__":
 
     model, tokenizer, frontend_delimiters, training_attacks = load_full_model(args.model_name_or_path,
                                                                               customized_model_class=args.customized_model_class,
-                                                                              load_as_adapter=args.load_as_adapter)
+                                                                              load_as_adapter=args.load_as_adapter,
+                                                                              base_model_path=args.base_model_path)
 
     delm = DELIMITERS[frontend_delimiters] if isinstance(frontend_delimiters, list) else DELIMITERS[frontend_delimiters]
     fmt = dict(PROMPT_FORMAT[frontend_delimiters])

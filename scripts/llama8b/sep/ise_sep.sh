@@ -2,7 +2,7 @@
 
 SCRIPT_PATH="train_unified.py"
 BASELINE="ise"
-BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct-log"
+BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct"
 DATA_PATH="datasets/sep/sep_data_cleaned.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}

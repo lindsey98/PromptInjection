@@ -648,6 +648,9 @@ def main(params, model, tokenizer):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
     parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
+    parser.add_argument("--base_model_path", type=str, default=None,
+                   help="Explicit base model path; required when adapter path "
+                        "does not encode the base path via the usual suffix convention.")
     parser.add_argument('-d', '--defense', type=str, default='none', # zero-shot defenses, never included in the adversarial training
                         choices=['none', 'sandwich', 'reminder', 'fakecompletion', 'thinkintervene',
                                  'spotlight_delimit', 'spotlight_datamark', 'spotlight_encode'],
@@ -662,7 +665,8 @@ if __name__ == "__main__":
     args.model_name_or_path = args.model_name_or_path[0]
 
     model, tokenizer, frontend_delimiters, training_attacks = load_full_model(args.model_name_or_path,
-                                                                              customized_model_class=args.customized_model_class)
+                                                                              customized_model_class=args.customized_model_class,
+                                                                              base_model_path=args.base_model_path)
 
     args.instruction_hierarchy = args.no_instruction_hierarchy
     time.sleep(args.delay_hour * 3600)
