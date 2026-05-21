@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 SCRIPT_PATH="train_unified.py"
 BASELINE="instfuse"
 BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct"
@@ -18,7 +19,6 @@ OBJECTIVE="dpo"
 MODEL_FAMILY="llama"
 ARCH="concatfuse"
 
-http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
   --objective "${OBJECTIVE}" \
   --model-family "${MODEL_FAMILY}" \
@@ -40,6 +40,6 @@ python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_
   --tf32 True \
   --attack "${DELIMITER}_None" \
   --model_max_length 512 \
-  --dataloader_num_workers 4 \
+  --dataloader_num_workers 0 \
   --fsdp "full_shard auto_wrap" \
   --fsdp_config "$FSDP_CONFIG"

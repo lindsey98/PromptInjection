@@ -18,7 +18,6 @@ OBJECTIVE="struq_sft"
 MODEL_FAMILY="llama"
 ARCH="base"
 
-http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
   --objective "${OBJECTIVE}" \
   --model-family "${MODEL_FAMILY}" \

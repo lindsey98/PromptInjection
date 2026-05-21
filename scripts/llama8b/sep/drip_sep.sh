@@ -1,25 +1,23 @@
 #!/bin/bash
 
 SCRIPT_PATH="train_unified.py"
-BASELINE="ise"
-BASE_MODEL="meta-llama/Meta-Llama-3-70B-Instruct"
-DATA_PATH="datasets/sep/sep_data_cleaned.json"
+BASELINE="instfuse"
+BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct"
+DATA_PATH="datasets/sep/sep_data_cleaned_dpo_gpt.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
 FSDP_CONFIG="training/config/fsdp_config.json"
 DELIMITER="TextTextText"
+SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none-newdata-dpo"
 
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
-
-BATCH_SIZE=1
+BATCH_SIZE=4
 EPOCH=1
 
-OBJECTIVE="sft"
+OBJECTIVE="dpo"
 MODEL_FAMILY="llama"
-ARCH="ise"
+ARCH="fuse"
 
-http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
-python -m torch.distributed.run --nproc_per_node=8 --master_port=29951 "$SCRIPT_PATH" \
+python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
   --objective "${OBJECTIVE}" \
   --model-family "${MODEL_FAMILY}" \
   --arch "${ARCH}" \
@@ -40,6 +38,6 @@ python -m torch.distributed.run --nproc_per_node=8 --master_port=29951 "$SCRIPT_
   --tf32 True \
   --attack "${DELIMITER}_None" \
   --model_max_length 512 \
-  --dataloader_num_workers 4 \
+  --dataloader_num_workers 1 \
   --fsdp "full_shard auto_wrap" \
   --fsdp_config "$FSDP_CONFIG"

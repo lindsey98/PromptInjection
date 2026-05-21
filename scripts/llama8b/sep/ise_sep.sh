@@ -2,14 +2,15 @@
 
 SCRIPT_PATH="train_unified.py"
 BASELINE="ise"
-BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct"
+BASE_MODEL="meta-llama/Meta-Llama-3-8B-Instruct-log"
 DATA_PATH="datasets/sep/sep_data_cleaned.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
 FSDP_CONFIG="training/config/fsdp_config.json"
 DELIMITER="TextTextText"
 
-SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
+#SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}-${PREFIX}-none"
+SAVE_PATH="debug" # fixme
 
 BATCH_SIZE=4
 EPOCH=1
@@ -18,8 +19,7 @@ OBJECTIVE="sft"
 MODEL_FAMILY="llama"
 ARCH="ise"
 
-http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
-python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
+python -m torch.distributed.run --nproc_per_node=8 --master_port=29951 "$SCRIPT_PATH" \
   --objective "${OBJECTIVE}" \
   --model-family "${MODEL_FAMILY}" \
   --arch "${ARCH}" \
