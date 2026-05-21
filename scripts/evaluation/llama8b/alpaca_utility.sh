@@ -32,7 +32,7 @@ case "$MODEL_PATH" in
         EXTRA_FLAGS="--customized_model_class LlamaForCausalLMEmbeddingShift"
         ;;
     *instfuse*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMFuse"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMDRIP"
         ;;
     *ise*)
         EXTRA_FLAGS="--customized_model_class LlamaForCausalLMISE"

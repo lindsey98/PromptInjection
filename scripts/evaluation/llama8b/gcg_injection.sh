@@ -27,22 +27,22 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*nofusion*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMNoFuse"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMNoFuse --pass_expert_labels"
         ;;
     *instfuse*concatfusion*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMConcatFuse"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMConcatFuse --pass_expert_labels"
         ;;
     *instfuse*embeddingshift*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMEmbeddingShift"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMEmbeddingShift --pass_expert_labels"
         ;;
     *instfuse*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMFuse"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMDRIP --pass_expert_labels"
         ;;
     *ise*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMMoE"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMISE --pass_expert_labels"
         ;;
     *possep*)
-        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMMoEV2"
+        EXTRA_FLAGS="--customized_model_class LlamaForCausalLMPFT --pass_expert_labels"
         ;;
 esac
 
