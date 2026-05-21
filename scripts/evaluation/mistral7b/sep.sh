@@ -1,7 +1,8 @@
 #!/bin/bash
 
-set -euo pipefail
-IFS=$'\n\t'
+# 1. Source Conda configuration (Adjust path if necessary)
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate prompt  # Replace with your actual env name
 
 # === Prompt for CUDA device ===
 read -p "Enter CUDA device ID to use (default: 0): " CUDA_ID
@@ -27,13 +28,16 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMFuse"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMDRIP"
         ;;
     *ise*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMMoE"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMISE"
+        ;;
+    *air*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMAIR"
         ;;
     *possep*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMMoEV2"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMPFT"
         ;;
 esac
 

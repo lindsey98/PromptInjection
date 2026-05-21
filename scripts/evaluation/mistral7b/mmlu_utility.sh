@@ -1,17 +1,14 @@
 #!/bin/bash
 
+# Source Conda configuration
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate prompt  # Replace with your actual env name
+
 set -euo pipefail
-IFS=$'\n\t'
 
 # === Prompt for CUDA device ===
 read -p "Enter CUDA device ID to use (default: 0): " CUDA_ID
 CUDA_ID=${CUDA_ID:-0}  # Default to 0 if empty
-
-if ! [[ "$CUDA_ID" =~ ^[0-9]+$ ]]; then
-    echo "[ERROR] Invalid CUDA device ID: $CUDA_ID"
-    exit 1
-fi
-echo "Using CUDA device $CUDA_ID"
 
 # === Prompt for model_name_or_path ===
 read -p "Enter model_name_or_path: " MODEL_PATH
@@ -29,6 +26,15 @@ case "$MODEL_PATH" in
     *instfuse*)
         EXTRA_FLAGS="--customized_model_class MistralForCausalLMDRIP"
         ;;
+    *ise*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMISE"
+        ;;
+    *air*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMAIR"
+        ;;
+    *possep*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMPFT"
+        ;;
 esac
 
 if [ -n "$EXTRA_FLAGS" ]; then
@@ -37,17 +43,17 @@ else
     echo "No special model type detected → Running without extra flags"
 fi
 
+# === Run command ===
+echo "Executing test..."
 
-#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack bypass --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --bypass_loss_lambda 10"
-#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack bypass --bypass_loss_lambda 50"
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack bypass --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --bypass_loss_lambda 20"
+CMD_ARGS="--model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"
-echo "$CMD"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mmlu.test_mmlu $CMD_ARGS"
 echo
 
 # -----------------------------
 # Execute
 # -----------------------------
-eval $CMD
+CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.mmlu.test_mmlu $CMD_ARGS

@@ -27,7 +27,16 @@ EXTRA_FLAGS=""
 
 case "$MODEL_PATH" in
     *instfuse*)
-        EXTRA_FLAGS="--customized_model_class MistralForCausalLMDRIP"
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMDRIP --pass_expert_labels"
+        ;;
+    *ise*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMISE --pass_expert_labels"
+        ;;
+    *air*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMAIR --pass_expert_labels"
+        ;;
+    *possep*)
+        EXTRA_FLAGS="--customized_model_class MistralForCausalLMPFT --pass_expert_labels"
         ;;
 esac
 
@@ -38,9 +47,7 @@ else
 fi
 
 
-#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack bypass --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --bypass_loss_lambda 10"
-#CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --attack bypass --bypass_loss_lambda 50"
-CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack bypass --model_name_or_path $MODEL_PATH $EXTRA_FLAGS --bypass_loss_lambda 20"
+CMD="CUDA_VISIBLE_DEVICES=$CUDA_ID python -m testing.test_gcg --attack attngcg --model_name_or_path $MODEL_PATH $EXTRA_FLAGS"
 
 echo
 echo "⚙ Running:"
