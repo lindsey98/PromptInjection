@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 SCRIPT_PATH="train_unified.py"
 BASELINE="ise"
 BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
@@ -18,7 +19,7 @@ OBJECTIVE="sft"
 MODEL_FAMILY="mistral"
 ARCH="ise"
 
-http_proxy=127.0.0.1:7890 https_proxy=127.0.0.1:7890 \
+
 python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
   --objective "${OBJECTIVE}" \
   --model-family "${MODEL_FAMILY}" \
