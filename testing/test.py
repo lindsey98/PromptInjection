@@ -667,7 +667,7 @@ def main() -> None:
                 cmd = (
                     f"export OPENAI_CLIENT_CONFIG_PATH={args.openai_config_path} && "
                     f"alpaca_eval --model_outputs {aligned_path} "
-                    f"--reference_outputs {args.data_path}"
+                    f"--reference_outputs datasets/gpt4o_outputs.json"
                 )
                 alpaca_log = subprocess.check_output(cmd, shell=True, text=True)
             except subprocess.CalledProcessError:
