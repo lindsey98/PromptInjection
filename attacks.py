@@ -1,6 +1,6 @@
 from config import IGNORE_ATTACK_SENTENCES, DELIMITERS, TEST_INJECTED_PROMPT, TEST_INJECTED_PROMPT_SPANISH, TEXTUAL_DELM_TOKENS, \
     TEST_INJECTED_PROMPT_CHINESE
-from data_generation.data_loader import format_with_other_delimiters
+from data_generation.sft_data_loader import format_with_other_delimiters
 import numpy as np
 import base64
 import random
