@@ -13,6 +13,37 @@ DRIP introduces two architectural modifications:
 
 ---
 
+## Why Representation Editing Works
+
+The core intuition behind DRIP is geometric. 
+A prompt injection succeeds when the model cannot tell an adversarial instruction (hidden in the data section) apart from a legitimate one. 
+We can see exactly where this confusion lives by inspecting the **token-level hidden states at the input to the first transformer block**, 
+immediately after the embedding layer, before any attention is applied.
+
+We randomly sample 200 examples from the SEP benchmark and project their token hidden states with t-SNE. 
+Each point is one token, colored by its semantic role:
+
+- 🔴 **Probe tokens** — instruction-like adversarial text injected into the data section.
+- 🔵 **Instruction tokens** — tokens in the legitimate system/instruction section.
+- 🟢 **Normal data tokens** — benign content in the data section.
+
+A well-defended model should push probe tokens (red) away from the instruction cluster (blue) and into the data cluster (green), 
+so the first attention block never mistakes injected commands for genuine instructions.
+
+**Undefended (Llama-3.1-8B-Instruct).**
+
+![Undefended t-SNE](figures/undefended_tsne.png)
+
+All three token types overlap in a single undifferentiated cloud. From the model's perspective, an adversarial instruction in the data section is geometrically indistinguishable from a legitimate system instruction, which is precisely why the attack lands.
+
+**Ours (DRIP).**
+
+![Ours t-SNE](figures/ours_tsne.png)
+
+DRIP produces the clearest separation. Instruction tokens (blue) form a compact, well-isolated cluster, normal data tokens (green) occupy a distinct region, and crucially the probe tokens (red) co-locate with the normal data cluster and are pushed away from the instruction cluster. By the time the first attention block runs, the model already treats injected adversarial commands as ordinary data content rather than as instructions. This is the token-wise de-instruction shift acting directly on the representation, while the residual re-instruction fusion separately re-anchors generation on the legitimate top-level instruction.
+
+---
+
 # Setup
 
 ## 1. Download base model checkpoints
@@ -29,24 +60,29 @@ huggingface-cli download meta-llama/Meta-Llama-3-8B-Instruct \
 
 ## 2. Create the environment
 
-Run the setup script. 
-It creates a conda environment (default name `prompt`) and installs all pinned dependencies.
+Run the setup script. It creates a conda environment (default name `prompt`) and installs all pinned dependencies.
 
 ```bash
 bash setup_env.sh
-conda activate prompt
+conda activate prompt   # if you named your environment "prompt"
 ```
 
-## 3. Select GPUs
+If you encounter problems installing torch, install it following the [official guide](https://pytorch.org/get-started/previous-versions/) for your CUDA version.
 
-Training uses FSDP across 6 NVIDIA RTX 5880 GPUs. 
-Export the visible devices accordingly:
+**Reference environment.** 
 
-```bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5
-```
+Our setup uses `torch==2.8.0` on the following hardware. 
 
-# Data Curation
+| Component | Version                             |
+|---|-------------------------------------|
+| GPU | 8× NVIDIA RTX 5880 Ada (49 GB each) |
+| NVIDIA driver | 580.105.08                          |
+| Driver-supported CUDA | 13.0 (per `nvidia-smi`) |
+| PyTorch | 2.8.0 (bundled CUDA runtime)        |
+| PyTorch CUDA runtime (`torch.version.cuda`) | 12.8 |
+
+
+# 3. Data Curation
 
 The curated DRIP training and evaluation data is archived on Zenodo
 (DOI: [10.5281/zenodo.20325769](https://doi.org/10.5281/zenodo.20325769)).
@@ -56,7 +92,7 @@ Download and extract it into the repository root:
 ```bash
 wget -O datasets.zip "https://zenodo.org/records/20325769/files/datasets.zip?download=1"
 unzip datasets.zip
-mv datasets1/ datasets/ 
+mv datasets1/ datasets/ # rename it to datasets/
 ```
 
 This restores `datasets/sep/sep_data_cleaned_dpo_gpt.json` and the other
@@ -92,7 +128,7 @@ All evaluation scripts prompt for a single CUDA device ID and the trained model 
 ## SEP score
 
 1. Run [`./scripts/evaluation/llama8b/sep.sh`](./scripts/evaluation/llama8b/sep.sh).
-2. When prompted, enter the CUDA device ID and the model path.
+2. When prompted, enter the CUDA device ID and the model path, e.g. meta-llama/Meta-Llama-3-8B-Instruct-TextTextText-sep-drip.
 3. Run [`./testing/sep/evaluation_main.py`](./testing/sep/evaluation_main.py) to print the SEP scores.
 
 ## ASR
@@ -118,10 +154,12 @@ See [`gcg/README.md`](./gcg/README.md). GCG requires a separate legacy environme
 
 1. Run [`./scripts/evaluation/llama8b/alpaca_utility.sh`](./scripts/evaluation/llama8b/alpaca_utility.sh).
 2. When prompted, enter the CUDA device ID and the model path.
-3. If the `alpacaeval` command is not runned successfully, please manually do 
+3. If the `alpacaeval` command did not run successfully, please manually do 
 
 ```bash
-export OPENAI_CLIENT_CONFIG_PATH=./datasets/openai_configs.yaml && alpaca_eval --model_outputs [model_path]/predictions_on_davinci_003_outputs.json --reference_outputs datasets/gpt4o_outputs.json
+export OPENAI_CLIENT_CONFIG_PATH=./datasets/openai_configs.yaml && \
+alpaca_eval --model_outputs [model_path]/predictions_on_davinci_003_outputs.json \
+--reference_outputs datasets/gpt4o_outputs.json
 ```
 
 4. Find the win rate in `model-path/weighted_alpaca_eval_gpt4_turbo/leaderboard.csv`.
