@@ -1,0 +1,11 @@
+{
+  "transformer_layer_cls_to_wrap":  ["Qwen3DecoderLayer"],
+  "backward_prefetch": "BACKWARD_PRE",
+  "forward_prefetch": false,
+  "use_orig_params": true,
+  "sync_module_states": true,
+  "cpu_ram_efficient_loading": true,
+  "offload_params": false,
+  "limit_all_gathers": true,
+  "state_dict_type": "SHARDED_STATE_DICT"
+}

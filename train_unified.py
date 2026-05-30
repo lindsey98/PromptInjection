@@ -34,6 +34,7 @@ from modeling import (
     LlamaDRIPConfig, LlamaForCausalLMDRIP,
     LlamaForCausalLMNoFuse, LlamaForCausalLMConcatFuse,
     LlamaForCausalLMEmbeddingShift,
+    Qwen3MoeDRIPConfig, Qwen3MoeForCausalLMDRIP,
     Qwen3DRIPConfig, Qwen3ForCausalLMDRIP,
     set_delimiter_ids_in_config,
 )
@@ -63,14 +64,12 @@ MISTRAL_REGISTRY = {
     "possep": (MistralISEConfig,  MistralForCausalLMPFT),
 }
 
-QWEN_REGISTRY = {
-    "fuse": (Qwen3DRIPConfig, Qwen3ForCausalLMDRIP),
-}
+QWEN3_REGISTRY = {"fuse": (Qwen3DRIPConfig, Qwen3ForCausalLMDRIP)}
 
 FAMILY_REGISTRY = {
-    "llama":   LLAMA_REGISTRY,
-    "mistral": MISTRAL_REGISTRY,
-    "qwen":    QWEN_REGISTRY,
+    "llama":      LLAMA_REGISTRY,
+    "mistral":    MISTRAL_REGISTRY,
+    "qwen3":       QWEN3_REGISTRY,
 }
 
 
@@ -125,6 +124,7 @@ def build_lora_config(
             target_modules=target_modules,
             modules_to_save=modules_to_save,
         )
+
 
     # ── Fuse-like (DRIP and variants) ───────────────────────────────────
     if objective in ("dpo", "sft") and arch in _FUSE_LIKE:
@@ -202,7 +202,7 @@ def parse_args(argv):
                    choices=["dpo", "sft", "secalign_dpo", "struq_sft"],
                    required=True)
     p.add_argument("--model-family",
-                   choices=["llama", "mistral", "qwen"],
+                   choices=["llama", "mistral", "qwen", "qwen3"],
                    default="base")
     p.add_argument("--arch", required=True,
                    choices=["base", "fuse", "nofuse", "concatfuse",
@@ -307,8 +307,11 @@ def build_custom_model(known, model_args, training_args, tokenizer,
         inst, data, resp = delms[1], delms[2], delms[3]
     else:
         inst, data, resp = delms[0], delms[1], delms[-1]
+
+    # VL: DRIP fields live on config.text_config, not the top-level config.
+    cfg_target = getattr(config, "text_config", config)
     set_delimiter_ids_in_config(
-        config, tokenizer,
+        cfg_target, tokenizer,
         inst_delm=inst, data_delm=data, response_delm=resp,
         num_labels=num_labels,
     )
@@ -331,7 +334,9 @@ def build_data_module(known, tokenizer, data_args, training_args, frontend_delim
     if known.objective in ("dpo"):
         return make_dpo_data_module(
             tokenizer=tokenizer, data_args=data_args,
-            frontend_delimiters=frontend_delimiters)
+            frontend_delimiters=frontend_delimiters,
+            max_length=getattr(training_args, "model_max_length", 2048),
+        )
 
     if known.objective == "secalign_dpo":
         train_dataset = load_dataset(
@@ -372,10 +377,16 @@ def build_ref_model(Model, model_args, config, bnb_config=None):
         trust_remote_code=True,
         device_map={"": local_rank},
     )
+
+    with torch.no_grad():
+        for n, p in ref.named_parameters():
+            if "deinstruction_shift" in n:
+                p.zero_()
+
     ref.config.use_cache = False
     for n, p in ref.named_parameters():
-        if "intermediate_shifts" in n:
-            print(n, p.norm().item())  # should be non-trivial, not ~0
+        if "deinstruction_shift" in n:
+            print(n, p.norm().item())  # should be 0
             break
     ref.eval()
     for p in ref.parameters():
@@ -522,9 +533,8 @@ def main(argv: Optional[List[str]] = None):
         model = get_peft_model(model, build_lora_config(known.objective, known.arch, known.model_family))
 
     for n, p in model.named_parameters():
-        if any(k in n for k in ["deinstruction_shift"]):
+        if any(k in n for k in ["deinstruction_shift", "residual_weight"]):
             p.requires_grad = True
-            p.data = p.data.to(torch.bfloat16)  # ensure trainable dtype
 
     # ---- Data ----
     data_module = build_data_module(
@@ -556,17 +566,17 @@ def main(argv: Optional[List[str]] = None):
 
         # 1. Config sanity
         cfg = getattr(model, "config", config)
+        dcfg = getattr(cfg, "text_config", None) or cfg  # DRIP fields on text_config for VL
         print(f"\n[Config]")
-        print(f"  num_labels       = {getattr(cfg, 'num_labels', '?')}")
-        print(f"  instruct_label   = {getattr(cfg, 'instruct_label', '?')}")
-        print(f"  data_label       = {getattr(cfg, 'data_label', '?')}")
-        print(f"  response_label   = {getattr(cfg, 'response_label', '?')}")
-        print(f"  num_experts      = {getattr(cfg, 'num_experts', '?')}  (expect 128 for Qwen3-30B-A3B)")
-        print(f"  inst_delm_ids    = {getattr(cfg, 'inst_delm_ids', None)}")
-        print(f"  data_delm_ids    = {getattr(cfg, 'data_delm_ids', None)}")
-        print(f"  response_delm_ids= {getattr(cfg, 'response_delm_ids', None)}")
-        print(f"  residual         = {getattr(cfg, 'residual', '?')}")
-        print(f"  bit_flip         = {getattr(cfg, 'bit_flip', '?')}")
+        print(f"  num_labels       = {getattr(dcfg, 'num_labels', '?')}")
+        print(f"  instruct_label   = {getattr(dcfg, 'instruct_label', '?')}")
+        print(f"  data_label       = {getattr(dcfg, 'data_label', '?')}")
+        print(f"  response_label   = {getattr(dcfg, 'response_label', '?')}")
+        print(f"  inst_delm_ids    = {getattr(dcfg, 'inst_delm_ids', None)}")
+        print(f"  data_delm_ids    = {getattr(dcfg, 'data_delm_ids', None)}")
+        print(f"  response_delm_ids= {getattr(dcfg, 'response_delm_ids', None)}")
+        print(f"  residual         = {getattr(dcfg, 'residual', '?')}")
+        print(f"  bit_flip         = {getattr(dcfg, 'bit_flip', '?')}")
 
         # 2. Trainable params summary
         print(f"\n[Trainable params]")
@@ -604,6 +614,7 @@ def main(argv: Optional[List[str]] = None):
             c_am = batch["chosen_attention_mask"][0]
             valid_len = int(c_am.sum().item())
 
+            print(f"prompt_len={int(batch['prompt_lens'][0])}  max_prompt_length=1024")
             print(f"\n[Chosen sample 0] valid_len={valid_len}")
             text = tokenizer.decode(c_ids[:valid_len], skip_special_tokens=False)
             print(f"--- decoded prompt+response ---")
@@ -612,7 +623,7 @@ def main(argv: Optional[List[str]] = None):
             # Expert label distribution
             print(f"\n[Expert label distribution (chosen[0], valid tokens only)]")
             ex_valid = c_ex[:valid_len]
-            for lab in range(getattr(cfg, "num_labels", 4)):
+            for lab in range(getattr(dcfg, "num_labels", 4)):
                 cnt = int((ex_valid == lab).sum().item())
                 pct = 100 * cnt / valid_len if valid_len else 0
                 print(f"  label {lab}: {cnt} tokens ({pct:.1f}%)")
@@ -634,7 +645,7 @@ def main(argv: Optional[List[str]] = None):
             # Sanity assertions
             print(f"\n[Sanity checks]")
             unique_labels = set(c_ex[:valid_len].tolist())
-            expected = set(range(getattr(cfg, "num_labels", 4)))
+            expected = set(range(getattr(dcfg, "num_labels", 4)))
             ok = unique_labels == expected
             print(f"  all {len(expected)} labels present: {ok}  (got {sorted(unique_labels)})")
             if not ok:

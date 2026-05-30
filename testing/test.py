@@ -55,8 +55,8 @@ from modeling import (
     MistralForCausalLMPFT,
     MistralDRIPConfig,
     MistralISEConfig,
-    Qwen3ForCausalLMDRIP,
-    Qwen3DRIPConfig,
+    Qwen3MoeForCausalLMDRIP,
+    Qwen3MoeDRIPConfig,
     set_delimiter_ids_in_config,
     LlamaAIRConfig,
     MistralAIRConfig,
@@ -86,7 +86,7 @@ REGISTRY: Dict[str, Tuple[type, type]] = {
     "MistralForCausalLMISE":    (MistralISEConfig,  MistralForCausalLMISE),
     "MistralForCausalLMAIR": (MistralAIRConfig, MistralForCausalLMAIR),
     "MistralForCausalLMPFT": (MistralISEConfig,  MistralForCausalLMPFT),
-    "QwenForCausalLMFuse":     (Qwen3DRIPConfig, Qwen3ForCausalLMDRIP),
+    "QwenForCausalLMDRIP":     (Qwen3MoeDRIPConfig, Qwen3MoeForCausalLMDRIP),
 }
 
 
@@ -255,6 +255,7 @@ def load_full_model(
     base = base_model_path or inferred_base
 
     name = os.path.basename(model_path)
+    print(name)
     delims_key = load_delimiters(name, model_path)
     training_attacks = "NaiveCompletion"
 
