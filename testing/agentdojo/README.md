@@ -1,34 +1,41 @@
+# AgentDojo Evaluation
 
+Evaluate DRIP (and baselines) on the [AgentDojo](https://github.com/ethz-spylab/agentdojo) agentic prompt-injection benchmark.
 
-### DRIP
+## Install
 
-Install AgentDojo
 ```bash
 pip install agentdojo==0.1.35
 ```
 
-Test on undefended model with no attack
+## How to run
+
+Each command below runs the **no-attack** setting. To run **with an attack**, append:
+
 ```bash
-bash run_local_vlm.sh # start local vllm server
+--attack [important_instructions|ignore_previous]
+```
+
+The undefended and Meta SecAlign models are served through a local vLLM server, so start that first (the command is shown in each block). DRIP loads the model directly and needs no server.
+
+### Undefended model
+
+```bash
+bash run_local_vlm.sh   # start local vLLM server
+
 python -m testing.agentdojo.run_agentdojo \
   --mode official \
   -m local \
-  --logdir agentdojo_runs/llama8b \
+  --logdir agentdojo_runs/llama8b
 ```
 
-Test on undefended model with attacks
-```bash
-bash run_local_vlm.sh # start local vllm server
-python -m testing.agentdojo.run_agentdojo \
-  --mode official \
-  -m local \
-  --logdir agentdojo_runs/llama8b \
-  --attack [important_instructions|ignore_previous]
-```
+### Meta SecAlign model
 
-Test on Meta SecAlign model with no attack
+Adds `--tool-delimiter input`.
+
 ```bash
-bash run_local_vlm_metasecalign.sh # start local vllm server
+bash run_local_vlm_metasecalign.sh   # start local vLLM server
+
 python -m testing.agentdojo.run_agentdojo \
   --mode official \
   -m local \
@@ -36,34 +43,12 @@ python -m testing.agentdojo.run_agentdojo \
   --tool-delimiter input
 ```
 
-Test on Meta SecAlign model with attacks
-```bash
-bash run_local_vlm_metasecalign.sh # start local vllm server
-python -m testing.agentdojo.run_agentdojo \
-  --mode official \
-  -m local \
-  --logdir agentdojo_runs/metasecalign8b \
-  --tool-delimiter input \
-  --attack [important_instructions|ignore_previous]
-```
+### DRIP
 
-
-Test on DRIP with no attack
 ```bash
 python -m testing.agentdojo.run_agentdojo \
   --mode fuse \
   --model_name_or_path [model_path] \
   --customized_model_class LlamaForCausalLMDRIP \
-  --logdir ./agentdojo_runs/llama8b_drip \
-  --attack [important_instructions|ignore_previous]
-```
-
-Test on DRIP with attacks
-```bash
-python -m testing.agentdojo.run_agentdojo \
-  --mode fuse \
-  --model_name_or_path [model_path] \
-  --customized_model_class LlamaForCausalLMDRIP \
-  --logdir ./agentdojo_runs/llama8b_drip \
-  --attack [important_instructions|ignore_previous]
+  --logdir ./agentdojo_runs/llama8b_drip
 ```

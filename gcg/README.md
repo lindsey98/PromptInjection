@@ -17,19 +17,12 @@ pip install -r gcg/legacy_modeling/legacy_requirements.txt
 
 ## Run the evaluation
 
-Invoke the script for the target model.
+Invoke the script for your target model:
 
-LLaMA-3-8B:
-
-```bash
-bash scripts/evaluation/llama8b/gcg_injection.sh
-```
-
-Mistral-7B:
-
-```bash
-bash scripts/evaluation/mistral7b/gcg_injection.sh
-```
+| Base model | Command |
+|---|---|
+| LLaMA-3-8B | `bash scripts/evaluation/llama8b/gcg_injection.sh` |
+| Mistral-7B | `bash scripts/evaluation/mistral7b/gcg_injection.sh` |
 
 When prompted:
 
