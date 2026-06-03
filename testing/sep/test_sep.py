@@ -3,7 +3,6 @@ import json
 from typing import Tuple, List, Dict
 from testing.test import load_full_model, test_model_output, recursive_filter, apply_testtime_defense
 import argparse
-import json
 from config import PROMPT_FORMAT, DEFAULT_SYSTEM_PROMPT
 import os
 from tqdm import tqdm
