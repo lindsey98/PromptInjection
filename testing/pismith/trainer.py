@@ -44,7 +44,6 @@ class PISmithConfig:
     lora_dropout: float = 0.05
     lora_target_modules: Optional[List[str]] = None
     resume_from_checkpoint: Optional[str] = None
-    judge_mode: str = "witness"
 
 # ────────────────────────────────────────────────────────────────────────────
 # Shared prompt builder — used by both Trainer and Inference

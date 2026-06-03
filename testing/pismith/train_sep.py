@@ -17,7 +17,7 @@ from testing.test import load_full_model
 from config import PROMPT_FORMAT, DELIMITERS, DEFAULT_SYSTEM_PROMPT
 from testing.tap.utils import _inject, _generate
 from testing.pismith.trainer import PISmithConfig, PISmithTrainer
-from testing.pismith.utils import extract_injected_task, make_witness_judge, make_hybrid_judge, make_llm_judge
+from testing.pismith.utils import extract_injected_task, make_witness_judge
 
 class SEPTrainer(PISmithTrainer):
 
@@ -46,15 +46,7 @@ class SEPTrainer(PISmithTrainer):
                 witness       = sample.get("witness", "")
 
                 # Per-sample judge: witness word must appear in response
-                judge_mode = getattr(cfg, "judge_mode", "witness")
-                if judge_mode == "witness":
-                    new_judge = make_witness_judge(witness)
-                elif judge_mode == "llm":
-                    new_judge = make_llm_judge(injected_task, target_inst)
-                elif judge_mode == "hybrid":
-                    new_judge = make_hybrid_judge(witness, injected_task, target_inst)
-                else:
-                    raise ValueError(f"unknown judge_mode: {judge_mode}")
+                new_judge = make_witness_judge(witness)
 
                 # Temporarily override judge_fn for this sample
                 orig_judge    = self.judge_fn
@@ -133,8 +125,6 @@ def main():
     parser.add_argument("--lora_dropout", type=float, default=0.05)
     parser.add_argument("--lora_target_modules", type=str, nargs="+")
     parser.add_argument("--resume_from_checkpoint", action="store_true")
-    parser.add_argument("--judge_mode", default="witness",
-                        choices=["witness", "llm", "hybrid"])
     args = parser.parse_args()
     args.model_name_or_path = args.model_name_or_path[0]
 

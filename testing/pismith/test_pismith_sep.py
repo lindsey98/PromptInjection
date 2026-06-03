@@ -10,7 +10,7 @@ from tqdm import tqdm
 from testing.test import load_full_model, test_model_output
 from config import PROMPT_FORMAT, DEFAULT_SYSTEM_PROMPT
 from typing import Dict, List, Optional
-from testing.pismith.utils import extract_injected_task, make_llm_judge_batch, make_witness_judge
+from testing.pismith.utils import extract_injected_task, make_witness_judge
 from testing.tap.utils import _inject, _generate, _generate_batch
 from testing.pismith.trainer import PISmithInference
 
