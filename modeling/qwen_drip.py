@@ -56,6 +56,7 @@ class Qwen3DRIPModel(transformers.Qwen3Model):
         self.instruct_label = config.instruct_label
         self.data_label     = config.data_label
         self.shift_tap      = nn.Identity()
+        self._warned_empty_data = False  # one-time silent-segmentation guard
         self.post_init()
 
     def _has_delimiter_config(self) -> bool:
@@ -124,7 +125,15 @@ class Qwen3DRIPModel(transformers.Qwen3Model):
         for layer_idx, decoder_layer in enumerate(self.layers[: self.config.num_hidden_layers]):
             # DRIP: de-instruction shift on data tokens, once before the first block.
             if self.config.bit_flip and layer_idx == 0 and expert_labels is not None:
-                data_mask_3d = (expert_labels == self.data_label).unsqueeze(-1).expand_as(hidden_states)
+                data_mask_2d = (expert_labels == self.data_label)
+                if (not self._warned_empty_data) and hidden_states.shape[1] > 1 and not bool(data_mask_2d.any()):
+                    logger.warning(
+                        "DRIP: no tokens were labeled as data (data_label=%d); the de-instruction "
+                        "shift is a no-op for this input. Check that the prompt's data delimiter "
+                        "matches config.data_delm_ids.", self.data_label
+                    )
+                    self._warned_empty_data = True
+                data_mask_3d = data_mask_2d.unsqueeze(-1).expand_as(hidden_states)
                 shifts = self.deinstruction_shift(hidden_states)
                 hidden_states = torch.where(data_mask_3d, shifts + hidden_states, hidden_states)
             hidden_states = self.shift_tap(hidden_states)

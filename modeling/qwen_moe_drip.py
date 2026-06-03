@@ -29,7 +29,9 @@ class Qwen3MoeDRIPConfig(Qwen3MoeConfig):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.residual          = kwargs.get('residual', True)
-        self.bit_flip          = kwargs.get('bit_flip', True)
+        # MoE backbones use residual fusion WITHOUT the de-instruction shift by
+        # default (see README "Limitations"); set bit_flip=True to enable it.
+        self.bit_flip          = kwargs.get('bit_flip', False)
         self.data_delm_ids     = kwargs.get('data_delm_ids', None)      # List[int]
         self.response_delm_ids = kwargs.get('response_delm_ids', None)  # List[int]
         self.inst_delm_ids     = kwargs.get('inst_delm_ids', None)      # List[int] | None
@@ -49,6 +51,7 @@ class Qwen3MoeModel(transformers.Qwen3MoeModel):
         self.instruct_label  = config.instruct_label
         self.data_label      = config.data_label
         self.shift_tap       = torch.nn.Identity()
+        self._warned_empty_data = False  # one-time silent-segmentation guard
         self._router_logits_buffer = []
         self._hooks_attached = False
         self.post_init()
@@ -150,12 +153,19 @@ class Qwen3MoeModel(transformers.Qwen3MoeModel):
             self._router_logits_buffer = []   # reset per forward call
 
         for layer_idx, decoder_layer in enumerate(self.layers[:self.config.num_hidden_layers]):
-            # if self.config.bit_flip and layer_idx == 0:
-            #     if expert_labels is not None:
-            #         data_mask_2d = (expert_labels == self.data_label)
-            #         data_mask_3d = data_mask_2d.unsqueeze(-1).expand_as(hidden_states)
-            #         shifts = self.deinstruction_shift(hidden_states)
-            #         hidden_states = torch.where(data_mask_3d, shifts + hidden_states, hidden_states)
+            # De-instruction shift (disabled by default for MoE; gated by config.bit_flip).
+            if self.config.bit_flip and layer_idx == 0 and expert_labels is not None:
+                data_mask_2d = (expert_labels == self.data_label)
+                if (not self._warned_empty_data) and hidden_states.shape[1] > 1 and not bool(data_mask_2d.any()):
+                    logger.warning(
+                        "DRIP: no tokens were labeled as data (data_label=%d); the de-instruction "
+                        "shift is a no-op for this input. Check that the prompt's data delimiter "
+                        "matches config.data_delm_ids.", self.data_label
+                    )
+                    self._warned_empty_data = True
+                data_mask_3d = data_mask_2d.unsqueeze(-1).expand_as(hidden_states)
+                shifts = self.deinstruction_shift(hidden_states)
+                hidden_states = torch.where(data_mask_3d, shifts + hidden_states, hidden_states)
 
             hidden_states = self.shift_tap(hidden_states)
             hidden_states = decoder_layer(

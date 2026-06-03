@@ -45,6 +45,7 @@ class MistralModel(transformers.MistralModel):
         self.data_label      = config.data_label
         self.residual_weight = nn.Parameter(torch.tensor([-1.0986]))
         self.shift_tap       = torch.nn.Identity()
+        self._warned_empty_data = False  # one-time silent-segmentation guard
         self.post_init()
 
     def _has_delimiter_config(self) -> bool:
@@ -123,6 +124,13 @@ class MistralModel(transformers.MistralModel):
             if self.config.bit_flip and layer_idx == 0:
                 if expert_labels is not None:
                     data_mask_2d = (expert_labels == self.data_label)  # B, L
+                    if (not self._warned_empty_data) and hidden_states.shape[1] > 1 and not bool(data_mask_2d.any()):
+                        logger.warning(
+                            "DRIP: no tokens were labeled as data (data_label=%d); the de-instruction "
+                            "shift is a no-op for this input. Check that the prompt's data delimiter "
+                            "matches config.data_delm_ids.", self.data_label
+                        )
+                        self._warned_empty_data = True
                     data_mask_3d = data_mask_2d.unsqueeze(-1).expand_as(hidden_states)
                     shifts = self.deinstruction_shift(
                         hidden_states)  # why having different shifts for different samples?
