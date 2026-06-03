@@ -169,14 +169,14 @@ Pick the script that matches your base model:
 ### SEP score
 
 1. Run [`./scripts/evaluation/llama8b/sep.sh`](./scripts/evaluation/llama8b/sep.sh).
-2. Run the SEP judge [`./testing/sep/evaluation_main_corrected_submit.py`](./testing/sep/evaluation_main_corrected_submit.py), then [`./testing/sep/evaluation_main_corrected_collect.py`](./testing/sep/evaluation_main_corrected_collect.py) to print the SEP metric.
+2. Run the SEP judge [`./testing/sep/sep_judge.py`](./testing/sep/sep_judge.py), then [`./testing/sep/sep_collect.py`](./testing/sep/sep_collect.py) to print the SEP metric.
 
 ### ASR
 
 **Alpaca heuristic-based attacks**
 
 1. Run [`./scripts/evaluation/llama8b/alpaca_injection.sh`](./scripts/evaluation/llama8b/alpaca_injection.sh).
-2. Run [`./testing/evaluation_main.py`](./testing/evaluation_main.py) to print ASR under the Naive, Ignore, Completion, Escape, and HackaPrompt attacks.
+2. Run [`./testing/evaluation_main.py`](./testing/evaluation_main.py) `-m [model_path]` to print ASR under the Naive, Ignore, Completion, Escape, and HackaPrompt attacks.
 
 **GCG-based adaptive attacks**
 

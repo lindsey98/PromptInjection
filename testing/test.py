@@ -25,6 +25,7 @@ from transformers import StoppingCriteria, StoppingCriteriaList, BitsAndBytesCon
 
 from attacks import *
 from testing.argparse_common import add_model_args
+from testing.model_registry import KNOWN_MODEL_CLASSES, detect_model_class_from_path
 from config import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TOKENS,
@@ -93,51 +94,15 @@ REGISTRY: Dict[str, Tuple[type, type]] = {
 
 }
 
+# Keep the lightweight key set (testing.model_registry) in sync with REGISTRY.
+assert set(REGISTRY) == KNOWN_MODEL_CLASSES, (
+    "REGISTRY keys are out of sync with testing.model_registry.KNOWN_MODEL_CLASSES"
+)
+
 
 # ---------------------------------------------------------------------------- #
 # Model loading
 # ---------------------------------------------------------------------------- #
-
-def detect_model_class_from_path(path: str) -> str:
-    """Best-effort mapping from a checkpoint path to a REGISTRY class key.
-
-    Mirrors the substring logic in scripts/evaluation/**/*.sh so the Python
-    entry points can pick the right custom class when --customized_model_class
-    is not supplied. The candidate key is always validated against REGISTRY, so
-    unknown architecture/method combinations return "" and the caller falls
-    back to the stock HF class.
-    """
-    p = (path or "").lower()
-
-    # Architecture prefix, matching the REGISTRY key naming.
-    if "mistral" in p:
-        prefix = "MistralForCausalLM"
-    elif "qwen" in p:
-        prefix = "Qwen3MoeForCausalLM" if "moe" in p else "Qwen3ForCausalLM"
-    else:
-        prefix = "LlamaForCausalLM"
-
-    # Method keyword -> class suffix, most specific first.
-    if "instfuse" in p and "nofusion" in p:
-        suffix = "NoFuse"
-    elif "instfuse" in p and "concatfusion" in p:
-        suffix = "ConcatFuse"
-    elif "instfuse" in p and "embeddingshift" in p:
-        suffix = "EmbeddingShift"
-    elif "instfuse" in p or "drip" in p:
-        suffix = "DRIP"
-    elif "ise" in p:
-        suffix = "ISE"
-    elif "air" in p:
-        suffix = "AIR"
-    elif "possep" in p:
-        suffix = "PFT"
-    else:
-        return ""
-
-    key = prefix + suffix
-    return key if key in REGISTRY else ""
-
 
 def _apply_delimiters(cfg, tokenizer, delims: List[str]) -> None:
     """Attach delimiter ids to the config, handling 3- vs 4-role variants."""
@@ -679,7 +644,7 @@ def main() -> None:
         need_gen = (not os.path.exists(benign_response_name)) or a != "none"
         if need_gen:
             llm_input = form_llm_input(
-                data, eval(a), fmt, apply_filter=False, defense=args.defense,
+                data, globals()[a], fmt, apply_filter=False, defense=args.defense,
             )
             in_response, begin_with, exact_match, outputs = test_model_output(
                 llm_input,

@@ -5,7 +5,7 @@ Replaces OpenAI Batch API with async concurrent requests to a locally hosted
 vLLM server (OpenAI-compatible /v1/chat/completions endpoint).
 
 Usage:
-  python judge_sep_local.py \
+  python sep_judge.py \
       --pred_file path/to/predictions_on_sep.jsonl \
       --base_url http://localhost:8000/v1 \
       --judge_model qwen \

@@ -1,0 +1,27 @@
+# Tooling configuration for the DRIP repository.
+# Installation is handled by setup_env.sh (see README); this file centralizes
+# the linter/formatter/test configuration used in development and CI.
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+# Pragmatic ignores for a research codebase:
+#   E501 long lines, E402 late imports, E731 lambda assignment,
+#   E741 ambiguous names, F403/F405 'from x import *' (used intentionally).
+ignore = ["E501", "E402", "E731", "E741", "F403", "F405"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 120

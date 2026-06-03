@@ -8,7 +8,7 @@ export VLLM_ATTENTION_BACKEND=FLASH_ATTN
 
 export no_proxy="localhost,127.0.0.1,0.0.0.0"
 
-CUDA_VISIBLE_DEVICES=5,6 \
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1} \
 vllm serve meta-llama/Llama-3.1-8B-Instruct \
   --dtype bfloat16 \
   --served-model-name local \

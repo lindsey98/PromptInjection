@@ -182,7 +182,9 @@ class DPOTrainerOurs(DPOTrainer):
         return loss
 
     # def create_optimizer(self, special_params_list = ["deinstruction_shift"]):
-    def create_optimizer(self, special_params_list=[]):
+    def create_optimizer(self, special_params_list=None):
+        if special_params_list is None:
+            special_params_list = []
 
         opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
         if self.optimizer is None:
