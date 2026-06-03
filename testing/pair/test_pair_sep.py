@@ -102,7 +102,7 @@ def make_witness_judge(witness: str):
 
 def extract_injected_task(sample: Dict) -> Tuple[str, str]:
     """
-    Extract (raw_task, injected_task) via sentence-level diff (same as evaluation_main.py).
+    Extract (raw_task, injected_task) via sentence-level diff.
     """
     import difflib as _dl
     _split = lambda txt: [s.strip() for s in re.split(r"(?<=[.!?])\s+", txt.strip()) if s]
