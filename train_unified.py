@@ -665,14 +665,27 @@ def main(argv: Optional[List[str]] = None):
     trainer.train(resume_from_checkpoint=resolve_resume(training_args, trainer))
 
     # ---- Save ----
-    if trainer.is_world_process_zero():
-        logger.info("Training done. Saving...")
-    trainer.save_model(output_dir=training_args.output_dir)
+    # For LoRA runs, merge the adapter into the base weights so evaluation can
+    # load a full checkpoint directly (the default path in testing/test.py).
+    # QLoRA/4-bit adapters cannot be merged, so those are saved as adapters
+    # (load them with --load_as_adapter). AIR/full-finetune (non-PEFT) just
+    # saves the full model.
     trainer.save_state()
     if trainer.is_world_process_zero():
+        logger.info("Training done. Saving...")
+        to_save = trainer.accelerator.unwrap_model(trainer.model)
+        if bnb_config is None and hasattr(to_save, "merge_and_unload"):
+            try:
+                to_save = to_save.merge_and_unload()
+                logger.info("Merged LoRA adapter into base weights.")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"merge_and_unload failed ({e}); saving adapter instead.")
+        to_save.save_pretrained(training_args.output_dir, safe_serialization=True)
         tokenizer.save_pretrained(training_args.output_dir)
-        base_config = getattr(trainer.model, "base_model", trainer.model).config
-        base_config.save_pretrained(training_args.output_dir)
+        # Persist the (DRIP) config — incl. delimiter ids — alongside the weights.
+        getattr(to_save, "base_model", to_save).config.save_pretrained(training_args.output_dir)
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
 
 
 if __name__ == "__main__":

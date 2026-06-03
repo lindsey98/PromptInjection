@@ -294,12 +294,12 @@ class DPOTrainerMOE(DPOTrainerOurs):
             chosen_logps, chosen_mean_logits, chosen_aux = self._seq_logps_moe(
                 self.model, inputs["chosen_input_ids"], inputs["chosen_attention_mask"],
                 inputs["chosen_expert_labels"], inputs["prompt_lens"],
-                return_logits=True, output_router_logits=False)
+                return_logits=True, output_router_logits=True)
 
             rejected_logps, rejected_mean_logits, rejected_aux = self._seq_logps_moe(
                 self.model, inputs["rejected_input_ids"], inputs["rejected_attention_mask"],
                 inputs["rejected_expert_labels"], inputs["prompt_lens"],
-                return_logits=True, output_router_logits=False)
+                return_logits=True, output_router_logits=True)
 
             # Ref forward: NO aux_loss needed (ref is frozen)
             with torch.no_grad():
@@ -365,7 +365,9 @@ class DPOTrainerMOE(DPOTrainerOurs):
 
 
 class DPOTrainerAIR(DPOTrainerOurs):
-    def create_optimizer(self, special_params_list = ["intermediate_shifts"]):
+    def create_optimizer(self, special_params_list=None):
+        if special_params_list is None:
+            special_params_list = ["intermediate_shifts"]
         opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
         if self.optimizer is None:
             decay_parameters = self.get_decay_parameter_names(opt_model)
