@@ -169,7 +169,7 @@ Pick the script that matches your base model:
 ### SEP score
 
 1. Run [`./scripts/evaluation/llama8b/sep.sh`](./scripts/evaluation/llama8b/sep.sh).
-2. Run the SEP judge [`./testing/sep/evaluation_main_corrected_submit.py`](./testing/sep/evaluation_main_corrected_submit.py), then [`./testing/sep/evaluation_main_corrected_collect.py`](./testing/sep/evaluation_main_corrected_collect.py) to print the SEP metric.
+2. Run the SEP judge [`./testing/sep/sep_judge.py`](./testing/sep/sep_judge.py), then [`./testing/sep/sep_collect.py`](./testing/sep/sep_collect.py) to print the SEP metric.
 
 ### ASR
 

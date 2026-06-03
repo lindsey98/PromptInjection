@@ -679,7 +679,7 @@ def main() -> None:
         need_gen = (not os.path.exists(benign_response_name)) or a != "none"
         if need_gen:
             llm_input = form_llm_input(
-                data, eval(a), fmt, apply_filter=False, defense=args.defense,
+                data, globals()[a], fmt, apply_filter=False, defense=args.defense,
             )
             in_response, begin_with, exact_match, outputs = test_model_output(
                 llm_input,

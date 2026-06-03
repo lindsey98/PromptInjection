@@ -1,7 +1,7 @@
 """
 SEP judge collector — local vLLM version.
 
-Reads the .judge_results.jsonl produced by judge_sep_local.py and the original
+Reads the .judge_results.jsonl produced by sep_judge.py and the original
 predictions file, then computes:
   - raw vs corrected probe_in_data ASR
   - probe_in_instruct ASR
@@ -44,7 +44,7 @@ def main():
     ap.add_argument("--pred_file", required=True,
                     help="Original predictions file used as input to the judge")
     ap.add_argument("--judge_results", required=True,
-                    help=".judge_results.jsonl produced by judge_sep_local.py")
+                    help=".judge_results.jsonl produced by sep_judge.py")
     ap.add_argument("--out_dir", default=None,
                     help="Where to save .verdicts.jsonl (default: alongside judge_results)")
     args = ap.parse_args()

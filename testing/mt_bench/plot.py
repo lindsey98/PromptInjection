@@ -20,7 +20,7 @@ def _regex_find_score(text):
         if m:
             try:
                 return float(m.group(1))
-            except:
+            except (TypeError, ValueError):
                 pass
     return None
 

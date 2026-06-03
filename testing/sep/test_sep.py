@@ -31,7 +31,7 @@ def format_prompt(elem: Dict, template: Dict, mode: str = 'data_with_probe', att
         }
         injected_prompt = extract_overlap(elem["prompt_instructed"],
                                           elem["system_prompt_instructed"])
-        attack_method = eval(attack)
+        attack_method = globals()[attack]
         d_item = attack_method(d_item, injected_prompt)
     else:
         if mode == 'data_with_probe':
