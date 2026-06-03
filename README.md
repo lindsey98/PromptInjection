@@ -50,17 +50,22 @@ Each point is one token, colored by its semantic role:
 A well-defended model should push probe tokens (red) away from the instruction cluster (blue) and into the data cluster (green),
 so the first attention block never mistakes injected commands for genuine instructions.
 
-**Undefended (Llama-3.1-8B-Instruct).**
+<table>
+  <tr>
+    <td align="center" width="50%"><b>Undefended (Llama-3.1-8B-Instruct)</b></td>
+    <td align="center" width="50%"><b>Ours (DRIP)</b></td>
+  </tr>
+  <tr>
+    <td><img src="figures/undefended_tsne.png" alt="Undefended t-SNE" width="100%"></td>
+    <td><img src="figures/ours_tsne.png" alt="Ours (DRIP) t-SNE" width="100%"></td>
+  </tr>
+  <tr>
+    <td valign="top">All three token types overlap in a single undifferentiated cloud. From the model's perspective, an adversarial instruction in the data section is geometrically indistinguishable from a legitimate system instruction, which is precisely why the attack lands.</td>
+    <td valign="top">The clearest separation: instruction tokens (blue) form a compact, isolated cluster, normal data tokens (green) occupy a distinct region, and crucially the probe tokens (red) co-locate with the data cluster, away from the instruction cluster. By the first attention block, the model already treats injected commands as ordinary data.</td>
+  </tr>
+</table>
 
-![Undefended t-SNE](figures/undefended_tsne.png)
-
-All three token types overlap in a single undifferentiated cloud. From the model's perspective, an adversarial instruction in the data section is geometrically indistinguishable from a legitimate system instruction, which is precisely why the attack lands.
-
-**Ours (DRIP).**
-
-![Ours t-SNE](figures/ours_tsne.png)
-
-DRIP produces the clearest separation. Instruction tokens (blue) form a compact, well-isolated cluster, normal data tokens (green) occupy a distinct region, and crucially the probe tokens (red) co-locate with the normal data cluster and are pushed away from the instruction cluster. By the time the first attention block runs, the model already treats injected adversarial commands as ordinary data content rather than as instructions. This is the token-wise de-instruction shift acting directly on the representation, while the residual re-instruction fusion separately re-anchors generation on the legitimate top-level instruction.
+This is the **token-wise de-instruction shift** acting directly on the representation, while the **residual re-instruction fusion** separately re-anchors generation on the legitimate top-level instruction.
 
 ---
 
