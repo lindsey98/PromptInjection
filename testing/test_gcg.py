@@ -30,7 +30,8 @@ import gc
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 from gcg.legacy_modeling import (LlamaDRIPConfig, LlamaForCausalLMDRIP, LlamaISEConfig, LlamaForCausalLMISE,
                                  LlamaForCausalLMPFT, MistralForCausalLMPFT,
-                                 MistralISEConfig, MistralForCausalLMISE, MistralDRIPConfig, MistralForCausalLMDRIP)
+                                 MistralISEConfig, MistralForCausalLMISE, MistralDRIPConfig, MistralForCausalLMDRIP,
+                                 LlamaForCausalLMNoFuse, LlamaForCausalLMConcatFuse, LlamaForCausalLMEmbeddingShift)
 import transformers
 from peft import PeftModel
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ REGISTRY: Dict[str, Tuple[type, type]] = {
     "MistralForCausalLMDRIP":   (MistralDRIPConfig, MistralForCausalLMDRIP),
     "MistralForCausalLMISE":    (MistralISEConfig,  MistralForCausalLMISE),
     "MistralForCausalLMPFT": (MistralISEConfig,  MistralForCausalLMPFT),
+    "LlamaForCausalLMNoFuse":        (LlamaDRIPConfig, LlamaForCausalLMNoFuse),
+    "LlamaForCausalLMConcatFuse":    (LlamaDRIPConfig, LlamaForCausalLMConcatFuse),
+    "LlamaForCausalLMEmbeddingShift": (LlamaDRIPConfig, LlamaForCausalLMEmbeddingShift),
 }
 
 

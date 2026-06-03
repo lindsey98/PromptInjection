@@ -77,14 +77,17 @@ for name, delm in DELIMITERS.items():
     PROMPT_FORMAT[name] = {}
     if len(delm) == 4:
         # 4-role (Llama ipython): system | user_instruction | ipython/data | assistant
+        # The system prompt is baked in (DEFAULT_SYSTEM_PROMPT); harnesses only
+        # supply {instruction}/{input}. (A custom prompt_input_tool below also
+        # bakes the same system prompt for the tool/data role.)
         PROMPT_FORMAT[name]["prompt_input"] = (
-            delm[0] + "\n{system}\n\n"
+            delm[0] + "\n" + DEFAULT_SYSTEM_PROMPT + "\n\n"
             + delm[1] + "\n{instruction}\n\n"
             + delm[2] + "\n{input}\n\n"
             + delm[3] + "\n"
         )
         PROMPT_FORMAT[name]["prompt_no_input"] = (
-            delm[0] + "\n{system}\n\n"
+            delm[0] + "\n" + DEFAULT_SYSTEM_PROMPT + "\n\n"
             + delm[1] + "\n{instruction}\n\n"
             + delm[2] + "\n\n\n"
             + delm[3] + "\n"

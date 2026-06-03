@@ -155,6 +155,7 @@ class LlamaModel(transformers.LlamaModel):
         self.data_label      = config.data_label
         self.residual_weight = nn.Parameter(torch.tensor([-1.0986])) # 0.5 weight assigned to the last instruction token
         self.shift_tap = torch.nn.Identity()  # <— dummy tap point
+        self._warned_empty_data = False  # one-time silent-segmentation guard
         self.post_init()
 
     def _has_delimiter_config(self) -> bool:
@@ -241,6 +242,13 @@ class LlamaModel(transformers.LlamaModel):
             if self.config.bit_flip and layer_idx == 0:
                 if expert_labels is not None:
                     data_mask_2d = (expert_labels == self.data_label)  # B, L
+                    if (not self._warned_empty_data) and hidden_states.shape[1] > 1 and not bool(data_mask_2d.any()):
+                        logger.warning(
+                            "DRIP: no tokens were labeled as data (data_label=%d); the de-instruction "
+                            "shift is a no-op for this input. Check that the prompt's data delimiter "
+                            "matches config.data_delm_ids.", self.data_label
+                        )
+                        self._warned_empty_data = True
                     data_mask_3d = data_mask_2d.unsqueeze(-1).expand_as(hidden_states)
                     shifts = self.deinstruction_shift(hidden_states) # why having different shifts for different samples?
                     hidden_states  = torch.where(
@@ -375,7 +383,9 @@ class LlamaModelEmbeddingShift(transformers.LlamaModel):
                 if expert_labels is not None:
                     data_mask_2d = (expert_labels == self.data_label)  # B, L
                     data_mask_3d = data_mask_2d.unsqueeze(-1).expand_as(hidden_states)
-                    shifts = self.deinstruction_shift(hidden_states) # why having different shifts for different samples?
+                    # Embedding-based shift: look up a learned per-role shift vector
+                    # by label index (expert_labels), not by the hidden state.
+                    shifts = self.deinstruction_shift(expert_labels)
                     hidden_states  = torch.where(
                         data_mask_3d,
                         shifts + hidden_states,
