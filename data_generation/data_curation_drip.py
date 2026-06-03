@@ -112,7 +112,13 @@ async def run_batch(processor: OptimizedAPIProcessor,
                     batch_size: int = 100,
                     starting_index: int = 0) -> List[Dict]:
     existing = jload(output_path) if os.path.exists(output_path) else []
-    remaining = requests[len(existing):]
+    # Resume by content key, not by count: dropped failures (None results) must
+    # not shift a length-based offset, which would skip unprocessed requests and
+    # reprocess completed ones. Key on (instruction, injected_input), matching the
+    # output records' (instruction, input).
+    done_keys = {(r["instruction"], r["input"]) for r in existing}
+    remaining = [req for req in requests
+                 if (req["instruction"], req["injected_input"]) not in done_keys]
 
     if not remaining:
         print("All requests already processed!")
