@@ -23,7 +23,6 @@ from gcg.gcg import GCGAttack
 from gcg.log import setup_logger
 from gcg.utils import Message, Role, SuffixManager, get_nonascii_toks
 from gcg.eval_input import LengthMismatchError
-import logging
 import re
 import csv
 import sys

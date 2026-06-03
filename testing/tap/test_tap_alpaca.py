@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Callable, Tuple
 from tqdm import tqdm
 
 from testing.test import load_full_model, test_model_output
+from testing.argparse_common import add_model_args
 from config import PROMPT_FORMAT, DELIMITERS, DEFAULT_SYSTEM_PROMPT
 from testing.tap.prompts import get_tap_attacker_system_prompt, get_tap_on_topic_prompt, get_tap_scorer_prompt
 from testing.tap.utils import _inject, build_tap_callables, AttackerFeedback, parse_attacker_feedback
@@ -192,11 +193,7 @@ def judge_fn(response: str) -> bool:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model_name_or_path",  type=str, nargs="+", required=True)
-    parser.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
-    parser.add_argument("--customized_model_class",    type=str, default="")
+    add_model_args(parser, required=True)
     parser.add_argument("--data_path", type=str, default="./datasets/davinci_003_outputs.json")
     parser.add_argument("--inject_position", type=str, default="end",
                         choices=["end", "start", "random"])

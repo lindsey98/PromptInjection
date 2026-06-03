@@ -24,6 +24,7 @@ from tqdm import tqdm
 from transformers import StoppingCriteria, StoppingCriteriaList, BitsAndBytesConfig
 
 from attacks import *
+from testing.argparse_common import add_model_args
 from config import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TOKENS,
@@ -97,6 +98,47 @@ REGISTRY: Dict[str, Tuple[type, type]] = {
 # Model loading
 # ---------------------------------------------------------------------------- #
 
+def detect_model_class_from_path(path: str) -> str:
+    """Best-effort mapping from a checkpoint path to a REGISTRY class key.
+
+    Mirrors the substring logic in scripts/evaluation/**/*.sh so the Python
+    entry points can pick the right custom class when --customized_model_class
+    is not supplied. The candidate key is always validated against REGISTRY, so
+    unknown architecture/method combinations return "" and the caller falls
+    back to the stock HF class.
+    """
+    p = (path or "").lower()
+
+    # Architecture prefix, matching the REGISTRY key naming.
+    if "mistral" in p:
+        prefix = "MistralForCausalLM"
+    elif "qwen" in p:
+        prefix = "Qwen3MoeForCausalLM" if "moe" in p else "Qwen3ForCausalLM"
+    else:
+        prefix = "LlamaForCausalLM"
+
+    # Method keyword -> class suffix, most specific first.
+    if "instfuse" in p and "nofusion" in p:
+        suffix = "NoFuse"
+    elif "instfuse" in p and "concatfusion" in p:
+        suffix = "ConcatFuse"
+    elif "instfuse" in p and "embeddingshift" in p:
+        suffix = "EmbeddingShift"
+    elif "instfuse" in p or "drip" in p:
+        suffix = "DRIP"
+    elif "ise" in p:
+        suffix = "ISE"
+    elif "air" in p:
+        suffix = "AIR"
+    elif "possep" in p:
+        suffix = "PFT"
+    else:
+        return ""
+
+    key = prefix + suffix
+    return key if key in REGISTRY else ""
+
+
 def _apply_delimiters(cfg, tokenizer, delims: List[str]) -> None:
     """Attach delimiter ids to the config, handling 3- vs 4-role variants."""
     if len(delims) == 4:
@@ -140,6 +182,18 @@ def load_model_and_tokenizer(
     tok_src = tokenizer_path or trained_model_path
     tok = transformers.AutoTokenizer.from_pretrained(tok_src, use_fast=True, use_auth_token=True)
     tok.pad_token = tok.eos_token
+
+    # When no class is given explicitly, fall back to detecting it from the
+    # path (mirrors the shell launchers). Stays empty for stock/base models.
+    if not customized_model_class:
+        detected = detect_model_class_from_path(trained_model_path)
+        if detected:
+            logger.info(
+                "Auto-detected model class %s from path %r "
+                "(pass --customized_model_class to override).",
+                detected, trained_model_path,
+            )
+            customized_model_class = detected
 
     try:
         if customized_model_class:
@@ -566,7 +620,7 @@ _DEFENSE_CHOICES = [
 
 def test_parser() -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="Testing a model with a specific attack")
-    p.add_argument("-m", "--model_name_or_path", type=str, nargs="+", required=True)
+    add_model_args(p, required=True)
     p.add_argument("-a", "--attack", type=str, nargs="+",
                    default=["completion_real", "completion_realcmb"],
                    choices=_ATTACK_CHOICES)
@@ -577,15 +631,10 @@ def test_parser() -> argparse.Namespace:
     p.add_argument("--sample_ids", type=int, nargs="+", default=None,
                    help="Sample ids to test (None = all)")
     p.add_argument("--log", default=False, action="store_true")
-    p.add_argument("--customized_model_class", type=str, default="",
-                   help="Custom model class name from REGISTRY (empty = AutoModelForCausalLM)")
     # --- adapter loading ---
     p.add_argument("--load_as_adapter", action="store_true",
                    help="Treat --model_name_or_path as a LoRA adapter directory; "
                         "load base from --base_model_path (or inferred from path).")
-    p.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
     return p.parse_args()
 
 

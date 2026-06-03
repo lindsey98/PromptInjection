@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Callable, Tuple
 from tqdm import tqdm
 
 from testing.test import load_full_model
+from testing.argparse_common import add_model_args
 from config import PROMPT_FORMAT, DELIMITERS, DEFAULT_SYSTEM_PROMPT
 from testing.pair.prompts import get_pair_attacker_system_prompt, format_pair_user_message
 from testing.pair.utils import build_pair_callables, AttackerFeedback, parse_attacker_feedback
@@ -92,11 +93,7 @@ def run_pair_for_sample(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model_name_or_path", type=str, nargs="+", required=True)
-    parser.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
-    parser.add_argument("--customized_model_class",  type=str, default="")
+    add_model_args(parser, required=True)
     parser.add_argument("--data_path", type=str, default="./datasets/davinci_003_outputs.json")
     parser.add_argument("--inject_position", type=str, default="end",
                         choices=["end", "start", "random"])

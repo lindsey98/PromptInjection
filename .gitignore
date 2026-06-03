@@ -1,9 +1,53 @@
-__pycache__
-wandb
-/datasets
-core.*
-huggyllama
-mistralai
-meta-llama
+# Byte-compiled / optimized / cached files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Experiment tracking / logs
+wandb/
 *.log
-configs/openai_configs.yaml
+core.*
+
+# Datasets and credentials (see README for setup)
+/datasets
+**/openai_configs.yaml
+
+# Downloaded model checkpoints
+huggyllama/
+mistralai/
+meta-llama/
+
+# Training / evaluation outputs and checkpoints
+*_ckpt/
+agentdojo_runs/
+*.pt
+*.bin
+*.safetensors

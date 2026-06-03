@@ -2,8 +2,8 @@
 import json
 from typing import Tuple, List, Dict
 from testing.test import load_full_model, test_model_output, recursive_filter, apply_testtime_defense
+from testing.argparse_common import add_model_args
 import argparse
-import json
 from config import PROMPT_FORMAT, DEFAULT_SYSTEM_PROMPT
 import os
 from tqdm import tqdm
@@ -18,62 +18,9 @@ def extract_overlap(s1, s2):
 
     return s1[match.a: match.a + match.size]
 
-def _make_repetitive_fn(times):
-    def repetitive_fn(d_item, injected_prompt):
-        # Repeat the prompt N times with newlines or spaces
-        # "Ignore previous... Ignore previous... Ignore previous..."
-        injected_content = (injected_prompt + "\n") * times
-        d_item['input'] += '\n\n' + injected_content.strip()
-        return d_item
-
-    repetitive_fn.__name__ = f"stress_repeat_{times}"
-    return repetitive_fn
-
-# Create variants for 2, 4, 6 ..20 repetitions
-# This tests if the model yields to "force of numbers" or fails due to long-context confusion
-REPEAT_COUNTS = range(2, 22, 2)
-for n in REPEAT_COUNTS:
-    globals()[f"stress_repeat_{n}"] = _make_repetitive_fn(n)
-
-
-def _make_positional_injection_fn(percent):
-
-    def injection_fn(d_item, injected_prompt):
-        text = d_item['input']
-
-        # Calculate the insertion index based on percentage
-        # 0 means start, 100 means end
-        if percent == 0:
-            # Inject at the very beginning
-            d_item['input'] = injected_prompt.capitalize() + "\n\n" + text
-        elif percent == 100:
-            # Inject at the very end (similar to naive)
-            d_item['input'] = text + "\n\n" + injected_prompt.capitalize()
-        else:
-            # Inject in the middle
-            split_idx = int(len(text) * (percent / 100.0))
-
-            # Find the nearest whitespace to avoid cutting a word in half
-            # Search forward from the calculated index
-            while split_idx < len(text) and text[split_idx] not in [' ', '\n', '\t']:
-                split_idx += 1
-
-            # Construct new input: [Prefix] [Injection] [Suffix]
-            prefix = text[:split_idx]
-            suffix = text[split_idx:]
-            d_item['input'] = f"{prefix}\n\n{injected_prompt.capitalize()}\n\n{suffix}"
-
-        return d_item
-
-    # Naming convention: inject_pos_10, inject_pos_50, etc.
-    injection_fn.__name__ = f"inject_pos_{percent}"
-    return injection_fn
-
-
-# Generate functions for 0%, 10%, 20%, ..., 100%
-POSITIONS = range(0, 101, 10)  # 0, 10, 20, ... 100
-for p in POSITIONS:
-    globals()[f"inject_pos_{p}"] = _make_positional_injection_fn(p)
+# The stress_repeat_* and inject_pos_* attack functions are provided by
+# `from attacks import *`. Their factories accept an optional injected_prompt
+# argument, which SEP supplies as a per-example probe (see format_prompt below).
 
 def format_prompt(elem: Dict, template: Dict, mode: str = 'data_with_probe', attack: str="none", defense: str="none") -> Tuple[str, str]:
 
@@ -107,10 +54,7 @@ def format_prompt(elem: Dict, template: Dict, mode: str = 'data_with_probe', att
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
-    parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
-    parser.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
+    add_model_args(parser, required=False)
     parser.add_argument('--data_path', type=str, default="./datasets/SEP_dataset.json")
     parser.add_argument('-a', '--attack', type=str, default=["none"],
                         choices=["none",
@@ -124,7 +68,6 @@ if __name__ == "__main__":
                         choices=['none', 'sandwich', 'reminder', 'fakecompletion', 'thinkintervene',
                                  'spotlight_delimit', 'spotlight_datamark', 'spotlight_encode'],
                         help='Baseline test-time zero-shot prompting defense')
-    parser.add_argument('--customized_model_class', type=str, help="Customized model class", default='')
     parser.add_argument('--load_as_adapter', action='store_true')
     args = parser.parse_args()
     args.model_name_or_path = args.model_name_or_path[0]

@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from tqdm import tqdm
 
 from testing.test import load_full_model, test_model_output
+from testing.argparse_common import add_model_args
 from config import PROMPT_FORMAT, DEFAULT_SYSTEM_PROMPT
 from typing import Dict, List, Optional
 from testing.pismith.utils import extract_injected_task, make_witness_judge
@@ -21,9 +22,7 @@ from testing.pismith.trainer import PISmithInference
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model_name_or_path", type=str, nargs="+", required=True)
-    parser.add_argument("--base_model_path", type=str, default=None)
-    parser.add_argument("--customized_model_class", type=str, default="")
+    add_model_args(parser, required=True)
     parser.add_argument("--attack_model_path", type=str, default="./pismith_ckpt/sep/")
     parser.add_argument("--attack_base_model", type=str, default=None,
                         help="Base model for LoRA. If None, read from adapter_config.json.")

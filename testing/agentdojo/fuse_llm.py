@@ -327,7 +327,7 @@ def build_fuse_pipeline(
         load_in_bnb4=load_in_bnb4,
     )
 
-    # model.config.residual = True  # 保留 fusion
+    # model.config.residual = True  # keep fusion
     # model.config.bit_flip = False
 
     delm = DELIMITERS[frontend_delimiters]

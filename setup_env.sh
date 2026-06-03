@@ -28,6 +28,10 @@ pip install alpaca-eval==0.6.6 evaluate==0.4.3 rouge==1.0.1 rouge-score==0.1.2 n
 
 pip install openai==2.6.1 captum==0.8.0
 
+# IFEval scorer (testing/ifeval) needs absl-py / immutabledict / langdetect;
+# rapidfuzz enables the optional fuzzy-match path in testing/test.py.
+pip install absl-py==2.1.0 immutabledict==4.2.0 langdetect==1.0.9 rapidfuzz==3.10.1
+
 echo "=== Setup done ==="
 python -c "import torch; print(f'torch={torch.__version__}, cuda={torch.cuda.is_available()}, device_count={torch.cuda.device_count()}')"
 python -c "import transformers, trl, peft, bitsandbytes; print(f'transformers={transformers.__version__}, trl={trl.__version__}, peft={peft.__version__}, bnb={bitsandbytes.__version__}')"

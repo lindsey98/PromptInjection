@@ -161,7 +161,7 @@ def save_summary(
     logger.info("Summary saved to %s", output_path)
 
 def _detect_rerun_format(targets: dict) -> str:
-    """'pairs' = [[ut, it], ...] (需 attack); 'utility' = [ut, ...] (无攻击)。"""
+    """'pairs' = [[ut, it], ...] (needs --attack); 'utility' = [ut, ...] (no attack)."""
     for items in targets.values():
         if not items:
             continue

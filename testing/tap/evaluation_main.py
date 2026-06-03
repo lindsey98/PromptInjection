@@ -6,7 +6,6 @@ import  os
 import json
 import sys
 from sklearn.linear_model import LinearRegression
-import numpy as np
 from typing import Dict, Tuple, List, Any, Union
 import matplotlib.pyplot as plt
 import matplotlib

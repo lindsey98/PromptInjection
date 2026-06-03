@@ -7,6 +7,7 @@ import re
 from tqdm import tqdm
 
 from testing.test import load_full_model
+from testing.argparse_common import add_model_args
 from config import PROMPT_FORMAT, DELIMITERS, DEFAULT_SYSTEM_PROMPT
 from testing.tap.utils import _inject, _generate
 from testing.pismith.trainer import PISmithInference
@@ -46,9 +47,7 @@ def make_target_query_fn(context, target_inst, fmt, model, tokenizer, frontend_d
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model_name_or_path", type=str, nargs="+", required=True)
-    parser.add_argument("--base_model_path", type=str, default=None)
-    parser.add_argument("--customized_model_class", type=str, default="")
+    add_model_args(parser, required=True)
     parser.add_argument("--attack_model_path", type=str,
                         default="./pismith_ckpt/alpaca/attack_lm_final")
     parser.add_argument("--attack_base_model", type=str, default=None,

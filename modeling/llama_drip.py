@@ -339,7 +339,7 @@ class LlamaModelEmbeddingShift(transformers.LlamaModel):
         if inputs_embeds is None:
             inputs_embeds: torch.Tensor = self.embed_tokens(input_ids)
 
-        # === 兼容旧版 tuple/list KV ===
+        # === Backward-compat with legacy tuple/list KV cache ===
         if isinstance(past_key_values, (list, tuple)):
             past_key_values = DynamicCache.from_legacy_cache(past_key_values)
 

@@ -126,7 +126,7 @@ class PISmithTrainer:
         if self._resume_path:
             print(f"[PISmith rank={self.rank}] Resuming adapter from {self._resume_path}")
             self.attack_model = PeftModel.from_pretrained(
-                base_model, self._resume_path, is_trainable=True,  # ← 关键，没这个 LoRA 是冻结的
+                base_model, self._resume_path, is_trainable=True,  # critical: without this the LoRA is frozen
             )
         else:
             self.attack_model = get_peft_model(base_model, lora_cfg)
@@ -179,14 +179,14 @@ class PISmithTrainer:
         if not getattr(self, "_resume_path", None):
             return 0, 0
 
-        # 1) 优先读 training_state.json
+        # 1) Prefer reading training_state.json
         state_file = os.path.join(self._resume_path, "training_state.json")
         if os.path.exists(state_file):
             with open(state_file) as f:
                 s = json.load(f)
             return s.get("step", 0), 0
 
-        # 2) Fallback：从目录名 attack_lm_stepN 里抠出 N
+        # 2) Fallback: extract N from the directory name attack_lm_stepN
         name = os.path.basename(self._resume_path.rstrip("/"))
         m = re.match(r"attack_lm_step(\d+)$", name)
         if m:

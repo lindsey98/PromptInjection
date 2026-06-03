@@ -8,10 +8,12 @@ import string
 import re
 
 def _make_repetitive_fn(times):
-    def repetitive_fn(d_item):
+    def repetitive_fn(d_item, injected_prompt=TEST_INJECTED_PROMPT):
         # Repeat the prompt N times with newlines or spaces
         # "Ignore previous... Ignore previous... Ignore previous..."
-        injected_content = (TEST_INJECTED_PROMPT + "\n") * times
+        # injected_prompt defaults to the global probe, but SEP passes a
+        # per-example probe extracted from the instructed prompt.
+        injected_content = (injected_prompt + "\n") * times
         d_item['input'] += '\n\n' + injected_content.strip()
         return d_item
 
@@ -27,17 +29,17 @@ for n in REPEAT_COUNTS:
 
 def _make_positional_injection_fn(percent):
 
-    def injection_fn(d_item):
+    def injection_fn(d_item, injected_prompt=TEST_INJECTED_PROMPT):
         text = d_item['input']
 
         # Calculate the insertion index based on percentage
         # 0 means start, 100 means end
         if percent == 0:
             # Inject at the very beginning
-            d_item['input'] = TEST_INJECTED_PROMPT.capitalize() + "\n\n" + text
+            d_item['input'] = injected_prompt.capitalize() + "\n\n" + text
         elif percent == 100:
             # Inject at the very end (similar to naive)
-            d_item['input'] = text + "\n\n" + TEST_INJECTED_PROMPT.capitalize()
+            d_item['input'] = text + "\n\n" + injected_prompt.capitalize()
         else:
             # Inject in the middle
             split_idx = int(len(text) * (percent / 100.0))
@@ -50,7 +52,7 @@ def _make_positional_injection_fn(percent):
             # Construct new input: [Prefix] [Injection] [Suffix]
             prefix = text[:split_idx]
             suffix = text[split_idx:]
-            d_item['input'] = f"{prefix}\n\n{TEST_INJECTED_PROMPT.capitalize()}\n\n{suffix}"
+            d_item['input'] = f"{prefix}\n\n{injected_prompt.capitalize()}\n\n{suffix}"
 
         return d_item
 

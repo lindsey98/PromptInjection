@@ -142,10 +142,10 @@ def radar_setup(ax, labels, vmin=0, vmax=10):
     ax.set_theta_direction(-1)
     ax.set_rlabel_position(0)
 
-    # ---- category labels（放远一点）----
+    # ---- category labels (pushed slightly outward) ----
     pretty_labels = [sentence_case(l) for l in labels]
-    ax.set_xticks([])  # 先关掉默认
-    radius_label = 1.10  # 控制标签离雷达的距离
+    ax.set_xticks([])  # turn off the default ticks first
+    radius_label = 1.10  # controls how far the labels sit from the radar
 
     for angle, lab in zip(angles[:-1], pretty_labels):
         ax.text(
@@ -167,7 +167,7 @@ def radar_setup(ax, labels, vmin=0, vmax=10):
     )
     ax.set_ylim(0, 1.0)
 
-    # 网格 & 外圈
+    # grid & outer ring
     ax.grid(True, linestyle=(0, (2, 2)), color="#bbbbbb", alpha=0.6)
     ax.spines["polar"].set_linewidth(1.4)
     ax.spines["polar"].set_color("#444444")
@@ -186,7 +186,7 @@ def plot_polygon(
     lw=2.2,
     marker="o",
 ):
-    # 归一化到 [0,1]
+    # normalize to [0, 1]
     vals = [(v - vmin) / (vmax - vmin) if vmax > vmin else 0.0 for v in values]
     vals += vals[:1]
     ax.plot(
