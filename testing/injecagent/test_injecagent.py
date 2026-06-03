@@ -16,6 +16,7 @@ from copy import deepcopy
 import numpy as np
 import argparse
 from testing.test import load_full_model, test_model_output
+from testing.argparse_common import add_model_args
 
 SYS_PROMPT = """
 You are a helpful AI Agent who can utilize a lot of external tools to answer User's questions or help User accomplish tasks following their instructions.
@@ -647,15 +648,11 @@ def main(params, model, tokenizer):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
-    parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
-    parser.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
+    add_model_args(parser, required=False)
     parser.add_argument('-d', '--defense', type=str, default='none', # zero-shot defenses, never included in the adversarial training
                         choices=['none', 'sandwich', 'reminder', 'fakecompletion', 'thinkintervene',
                                  'spotlight_delimit', 'spotlight_datamark', 'spotlight_encode'],
                         help='Baseline test-time zero-shot prompting defense')
-    parser.add_argument('--customized_model_class', type=str, help="Customized model class", default='')
     parser.add_argument('--test_data', type=str, default='./datasets/davinci_003_outputs.json')
     parser.add_argument('--num_samples', type=int, default=-1)
     parser.add_argument("--tensor_parallel_size", type=int, default=1)

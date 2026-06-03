@@ -2,6 +2,7 @@
 import json
 from typing import Tuple, List, Dict
 from testing.test import load_full_model, test_model_output, recursive_filter
+from testing.argparse_common import add_model_args
 import argparse
 from config import PROMPT_FORMAT, DELIMITERS, DEFAULT_SYSTEM_PROMPT
 import os
@@ -18,12 +19,8 @@ def format_prompt(elem: Dict, template: Dict) -> Tuple[str, str]:
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
-    parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
+    add_model_args(parser, required=False)
     parser.add_argument('--data_path', type=str, default="./datasets/ifeval/input_data.jsonl")
-    parser.add_argument('--customized_model_class', type=str, help="Customized model class", default='')
-    parser.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
     args = parser.parse_args()
     args.model_name_or_path = args.model_name_or_path[0]
 

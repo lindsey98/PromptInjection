@@ -10,6 +10,7 @@ import torch
 from datasets import load_dataset
 
 from testing.test import load_full_model, test_model_output, apply_testtime_defense
+from testing.argparse_common import add_model_args
 from config import PROMPT_FORMAT, DEFAULT_SYSTEM_PROMPT
 
 
@@ -217,10 +218,7 @@ def summary_results(summary_path: str, scores: Dict,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Testing a model on MMLU')
-    parser.add_argument('-m', '--model_name_or_path', type=str, nargs="+")
-    parser.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
+    add_model_args(parser, required=False)
     parser.add_argument('-d', '--defense', type=str, default='none',
                         choices=['none', 'sandwich', 'reminder', 'fakecompletion',
                                  'thinkintervene', 'spotlight_delimit',
@@ -235,8 +233,6 @@ if __name__ == "__main__":
                         help='Number of few-shot examples from dev split (default: 0)')
     parser.add_argument('--num_samples', type=int, default=-1,
                         help='Max samples per subject (-1 = all)')
-    parser.add_argument('--customized_model_class', type=str, default='',
-                        help='Custom model class name')
     parser.add_argument('--load_as_adapter', action='store_true')
 
     args = parser.parse_args()

@@ -24,6 +24,7 @@ from tqdm import tqdm
 from transformers import StoppingCriteria, StoppingCriteriaList, BitsAndBytesConfig
 
 from attacks import *
+from testing.argparse_common import add_model_args
 from config import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TOKENS,
@@ -619,7 +620,7 @@ _DEFENSE_CHOICES = [
 
 def test_parser() -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="Testing a model with a specific attack")
-    p.add_argument("-m", "--model_name_or_path", type=str, nargs="+", required=True)
+    add_model_args(p, required=True)
     p.add_argument("-a", "--attack", type=str, nargs="+",
                    default=["completion_real", "completion_realcmb"],
                    choices=_ATTACK_CHOICES)
@@ -630,15 +631,10 @@ def test_parser() -> argparse.Namespace:
     p.add_argument("--sample_ids", type=int, nargs="+", default=None,
                    help="Sample ids to test (None = all)")
     p.add_argument("--log", default=False, action="store_true")
-    p.add_argument("--customized_model_class", type=str, default="",
-                   help="Custom model class name from REGISTRY (empty = AutoModelForCausalLM)")
     # --- adapter loading ---
     p.add_argument("--load_as_adapter", action="store_true",
                    help="Treat --model_name_or_path as a LoRA adapter directory; "
                         "load base from --base_model_path (or inferred from path).")
-    p.add_argument("--base_model_path", type=str, default=None,
-                   help="Explicit base model path; required when adapter path "
-                        "does not encode the base path via the usual suffix convention.")
     return p.parse_args()
 
 
