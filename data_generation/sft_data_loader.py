@@ -375,7 +375,7 @@ class SupervisedDataset(Dataset):
     def __init__(self, data_path_list: List[str], tokenizer, attack, frontend_delimiters, downsample=True):
         super(SupervisedDataset, self).__init__()
 
-        prompt_dict_name, attacks = attack.split('_')
+        prompt_dict_name, attacks = attack.split('_', 1)
 
         self.input_ids = []
         self.labels = []

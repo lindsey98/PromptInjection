@@ -369,7 +369,9 @@ def form_llm_input(data, injection_method, fmt, apply_filter, defense, sample_id
     llm_input = injection_method(fmt) if injection_method is hackaprompt else []
     for i, d in enumerate(data):
         if injection_method is none:
-            llm_input.append(apply_testtime_defense(d, fmt, defense))
+            # deepcopy: apply_testtime_defense mutates the dict in place, so never
+            # pass the shared source `d` (would contaminate later attacks/runs).
+            llm_input.append(apply_testtime_defense(deepcopy(d), fmt, defense))
             continue
         if not d["input"] or injection_method is hackaprompt:
             continue

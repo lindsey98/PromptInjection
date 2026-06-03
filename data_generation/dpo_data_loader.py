@@ -27,7 +27,7 @@ def generate_training_data_dpo(data_dicts, prompt_dict_name, tokenizer):
 
 class PreferenceWithExpertDatasetHF:
     def __init__(self, data_path_list: List[str], tokenizer: PreTrainedTokenizer, attack: str):
-        prompt_dict_name, attacks = attack.split('_')
+        prompt_dict_name, attacks = attack.split('_', 1)
         prompts: List[str] = []
         chosens: List[str] = []
         rejecteds: List[str] = []
@@ -78,7 +78,13 @@ class DPOCollatorWithExpert(object):
 
         # 2) resp: chosen / rejected
         def enc(texts):
-            out = self.tokenizer(texts, padding=False, truncation=True, max_length=self.max_target_length, return_tensors=None)
+            # add_special_tokens=False: the prompt (tokenized separately, with BOS)
+            # is prepended to this response, so the response must NOT get its own
+            # BOS — otherwise a spurious BOS lands mid-sequence at the prompt/
+            # response boundary (train/inference mismatch). The explicit eos in the
+            # text is still tokenized to the eos id.
+            out = self.tokenizer(texts, padding=False, truncation=True, max_length=self.max_target_length,
+                                 add_special_tokens=False, return_tensors=None)
             ids = [torch.tensor(x, dtype=torch.long) for x in out["input_ids"]]
             return ids
 
