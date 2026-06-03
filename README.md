@@ -9,6 +9,13 @@ DRIP introduces two architectural modifications:
 
 ![Overview](figures/overview.png)
 
+> **Chat format.** All evaluations in this README (SEP, Alpaca injection, InjecAgent, and the
+> utility benchmarks) use a **3-role** format — **`system`**, **`user` (untrusted)**, and
+> **`assistant`** — where the injected content lives in the `user` turn. The agentic
+> [AgentDojo](./testing/agentdojo/README.md) evaluation instead uses a **4-role** format
+> (`system`, `user`, `tool` (untrusted), `assistant`) because injections there hide in tool
+> outputs. See its README for details.
+
 ## Contents
 
 - [Why Representation Editing Works](#why-representation-editing-works)
