@@ -155,6 +155,14 @@ Pick the script that matches your base model:
 | Meta-Llama-3-8B-Instruct | `bash ./scripts/llama8b/sep/drip_sep.sh` |
 | Mistral-7B-Instruct-v0.3 | `bash ./scripts/mistral7b/sep/drip_sep.sh` |
 
+Training merges the LoRA adapter into the base weights and saves a **full
+checkpoint** that evaluation can load directly. For checkpoints saved as adapters
+instead (QLoRA runs, or models trained earlier), merge them first:
+
+```bash
+python merge_lora.py --adapter_path <adapter_dir> --output_path <merged_dir>
+```
+
 ---
 
 ## Evaluation
