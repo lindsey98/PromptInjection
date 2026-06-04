@@ -7,6 +7,24 @@ search for an adversarial suffix that maximizes the chance the injected instruct
 obeyed. It is the strongest, adaptive counterpart to the heuristic Alpaca attacks in the
 main README, and the resulting attack-success rate (ASR) is the headline robustness number.
 
+## How it works
+
+```mermaid
+flowchart LR
+    P["instruction + data + adversarial suffix"] --> M["target model (DRIP)"]
+    M --> L["GCG loss: maximize P(injected response)<br/>(+ optional adaptive term)"]
+    L --> G["token-level gradients on the suffix"]
+    G --> C["try top-k coordinate swaps,<br/>keep the best"]
+    C -- "repeat" --> P
+    L --> W{"emits injected response?"}
+    W -- "yes" --> X(["attack success → ASR"])
+```
+
+GCG only optimizes the **adversarial suffix** inside the data section, using the
+model's own gradients — a far stronger, adaptive attack than the fixed heuristics.
+The `(+ optional adaptive term)` is what the [attack variants](#4-adaptive-attack-variants---attack)
+below add to target a specific DRIP component.
+
 ## Why a separate environment
 
 Newer `transformers` versions trigger an out-of-memory (OOM) error during GCG's

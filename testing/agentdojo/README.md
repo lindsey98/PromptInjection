@@ -12,6 +12,24 @@ and reports two numbers per suite:
 
 > **Base model:** all AgentDojo experiments use **`meta-llama/Llama-3.1-8B-Instruct`**.
 
+## How it works
+
+```mermaid
+flowchart TD
+    U["user task"] --> A["agent (model under test)"]
+    A --> TC["tool call"]
+    TC --> O["tool output<br/>(4-role 'tool' slot = untrusted)<br/>+ injected instruction"]
+    O --> A
+    A --> D{"follow the injection?"}
+    D -- "no: finish the user task" --> UT(["Utility ✓"])
+    D -- "yes: do the attacker's task" --> SEC(["Security ✗ — attack lands"])
+```
+
+Injections hide in **tool outputs** (not the user turn). The agent loops
+tool-call → observation → next action until done; a run yields a **utility** score
+(did it finish the user task?) and a **security** score (did it resist the
+injection?).
+
 ## Chat format: 4 roles here vs. 3 roles in the main README
 
 This is the key difference from the rest of the repo, so it is worth stating up front.
