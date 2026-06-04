@@ -58,9 +58,10 @@ def build_sft(data_list: list, clean_resp_by_key: dict) -> list:
 
 def build_sft_clean(data_list: list, clean_resp_by_key: dict) -> list:
     """
-    For each SEP item, emit two SFT examples:
-      1. instruction + injected input  → clean response
-      2. instruction + clean input     → clean response
+    For each SEP item, emit ONE clean SFT example:
+      instruction + clean input → clean response
+    (No injected examples — unlike build_sft, which also emits the
+    injected-input -> clean-response robustness example.)
     """
     sft_data = []
     for item in data_list:
