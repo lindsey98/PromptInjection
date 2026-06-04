@@ -160,7 +160,7 @@ checkpoint** that evaluation can load directly. For checkpoints saved as adapter
 instead (QLoRA runs, or models trained earlier), merge them first:
 
 ```bash
-python merge_lora.py --adapter_path <adapter_dir> --output_path <merged_dir>
+python -m training.merge_lora --adapter_path <adapter_dir> --output_path <merged_dir>
 ```
 
 ---

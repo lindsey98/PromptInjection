@@ -60,7 +60,7 @@ Start the vLLM server (it serves `Llama-3.1-8B-Instruct` under the name `local`)
 the benchmark in a second shell:
 
 ```bash
-bash run_local_vlm.sh   # terminal 1: start the local vLLM server, wait until it is ready
+bash testing/agentdojo/run_local_vlm.sh   # terminal 1: start the local vLLM server, wait until it is ready
 
 # terminal 2:
 python -m testing.agentdojo.run_agentdojo \
@@ -75,7 +75,7 @@ SecAlign is served as a LoRA adapter on top of the same base model, and it expec
 outputs in the dedicated `input` role, so add `--tool-delimiter input`:
 
 ```bash
-bash run_local_vlm_metasecalign.sh   # terminal 1: start the SecAlign vLLM server
+bash testing/agentdojo/run_local_vlm_metasecalign.sh   # terminal 1: start the SecAlign vLLM server
 
 # terminal 2:
 python -m testing.agentdojo.run_agentdojo \

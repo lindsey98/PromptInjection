@@ -7,12 +7,12 @@ so the merged result is guaranteed consistent with eval, then merges and saves a
 standalone checkpoint that the default eval path can load directly.
 
 Usage:
-    python merge_lora.py \
+    python -m training.merge_lora \
         --adapter_path  out/Meta-Llama-3-8B-Instruct-TextTextText-sep-drip \
         --output_path   out/Meta-Llama-3-8B-Instruct-TextTextText-sep-drip-merged
 
     # base path / model class are inferred from the adapter path; override if needed:
-    python merge_lora.py --adapter_path <dir> --output_path <dir> \
+    python -m training.merge_lora --adapter_path <dir> --output_path <dir> \
         --base_model_path meta-llama/Meta-Llama-3-8B-Instruct \
         --customized_model_class LlamaForCausalLMDRIP
 """
