@@ -53,11 +53,13 @@ python data_generation/check_sep_leakage.py \
   --train datasets/sep/train_dataset.json --eval datasets/SEP_dataset.json
 ```
 
-**Sizes** — the data is downloaded separately, so count your copy:
+**Sizes.** The SEP **evaluation** set has **9,160** examples; the SEP **training**
+split yields **9,997** DRIP DPO pairs (the 3-role / text-only setting). Counts are
+from the Zenodo release — verify your copy with:
 
 ```bash
-python -c "import json;print('train', len(json.load(open('datasets/sep/train_dataset.json'))))"
 python -c "import json;print('eval ', len(json.load(open('datasets/SEP_dataset.json'))))"
+python -c "import json;print('dpo  ', len(json.load(open('datasets/sep/sep_data_cleaned_dpo_gpt.json'))))"
 ```
 
 **Record fields.** Train: `system_prompt` (instruction), `data_prompt_clean` /
