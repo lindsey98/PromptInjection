@@ -174,7 +174,7 @@ python merge_lora.py --adapter_path <adapter_dir> --output_path <merged_dir>
 >
 > The examples use the Llama scripts — swap `llama8b` for `mistral7b` to evaluate the other model.
 
-### SEP score
+### SEP score — 📖 [details](./testing/sep/README.md)
 
 1. Run [`./scripts/evaluation/llama8b/sep.sh`](./scripts/evaluation/llama8b/sep.sh).
 2. Run the SEP judge [`./testing/sep/sep_judge.py`](./testing/sep/sep_judge.py), then [`./testing/sep/sep_collect.py`](./testing/sep/sep_collect.py) to print the SEP metric.
@@ -190,9 +190,17 @@ python merge_lora.py --adapter_path <adapter_dir> --output_path <merged_dir>
 
 See [`gcg/README.md`](./gcg/README.md). GCG requires a separate legacy environment because newer `transformers` versions trigger OOM.
 
-**InjecAgent**
+**InjecAgent** — 📖 [details](./testing/injecagent/README.md)
 
 1. Run [`./scripts/evaluation/llama8b/injecagent.sh`](./scripts/evaluation/llama8b/injecagent.sh).
+
+**Adaptive attacks: PAIR / TAP / PISmith**
+
+Optimization/search-based attackers that adapt to the target — each has its own guide:
+
+- **PAIR** — iterative attacker LLM — 📖 [`testing/pair/README.md`](./testing/pair/README.md)
+- **TAP** — tree-of-attacks with pruning — 📖 [`testing/tap/README.md`](./testing/tap/README.md)
+- **PISmith** — RL-trained attacker (**train, then test**) — 📖 [`testing/pismith/README.md`](./testing/pismith/README.md)
 
 ### Utility
 
@@ -209,18 +217,18 @@ See [`gcg/README.md`](./gcg/README.md). GCG requires a separate legacy environme
 
 3. Find the win rate in `model-path/weighted_alpaca_eval_gpt4_turbo/leaderboard.csv`.
 
-**IFEval**
+**IFEval** — 📖 [details](./testing/ifeval/README.md)
 
 1. Run [`./scripts/evaluation/llama8b/ifeval.sh`](./scripts/evaluation/llama8b/ifeval.sh).
 2. Run [`./testing/ifeval/evaluation_main.py`](./testing/ifeval/evaluation_main.py) and look for ASR strict.
 
-**MT-Bench**
+**MT-Bench** — 📖 [details](./testing/mt_bench/README.md)
 
 1. Run [`./scripts/evaluation/llama8b/mtbench.sh`](./scripts/evaluation/llama8b/mtbench.sh).
 2. Run [`./testing/mt_bench/gen_judgment.py`](./testing/mt_bench/gen_judgment.py) with `--model-path [model-path] --model-id [model name, e.g. Ours]`.
 3. Plot the radar chart with [`./testing/mt_bench/plot.py`](./testing/mt_bench/plot.py).
 
-**MMLU**
+**MMLU** — 📖 [details](./testing/mmlu/README.md)
 
 1. Run [`./scripts/evaluation/llama8b/mmlu_utility.sh`](./scripts/evaluation/llama8b/mmlu_utility.sh).
 2. Run [`./testing/mmlu/evaluation_main.py`](./testing/mmlu/evaluation_main.py).
