@@ -44,8 +44,9 @@ bash testing/pismith/test.sh <target_model_path> <alpaca|sep> [cuda_device]
 This loads the trained attacker adapter and reports ASR@N / ASR@1 against the
 target.
 
-> Note: `test.sh` currently resolves the attacker adapter as
-> `./pismith_ckpt/sep_<target_tag>/attack_lm_final` (the `sep_` prefix is fixed),
-> so **train with `sep` first** — or pass a 4th arg `llama` to force the
-> `sep_llama` attacker. Make sure the target type detected at test time matches
-> the one you trained against.
+> Note: the attacker is trained on **SEP only**, so `test.sh` loads it from
+> `./pismith_ckpt/sep_<target_tag>/attack_lm_final` regardless of the test dataset
+> — this is intentional (the SEP-trained attacker is reused to attack both SEP and
+> Alpaca targets). So **train with `sep` first**. Pass a 4th arg `llama` to force
+> the `sep_llama` attacker, and make sure the target type detected at test time
+> matches the one you trained against.

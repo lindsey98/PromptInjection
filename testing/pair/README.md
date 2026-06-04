@@ -36,9 +36,10 @@ Requires an OpenAI API key (the attacker LLM): `export OPENAI_API_KEY=...`.
 2. Score:
 
    ```bash
-   python -m testing.pair.evaluation_main
+   python -m testing.pair.evaluation_main -m <model_path>
    ```
 
-   > Note: `evaluation_main.py` currently reads the model directory from a
-   > hardcoded `ours_model_path` at the top of `main()` — set it to your model dir
-   > before running. It prints exact-match / begin-with / in-response ASR.
+   Reads `predictions_on_sep_pair.jsonl` and `predictions_on_alpaca_pair.jsonl`
+   from `<model_path>` and prints the SEP-pair metrics (sep_rate / probe-in-data /
+   probe-in-instruct ASR) and the Alpaca-pair ASR (exact-match / begin-with /
+   in-response).

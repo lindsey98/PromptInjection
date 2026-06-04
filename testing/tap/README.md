@@ -33,9 +33,10 @@ Requires an OpenAI API key (attacker + evaluator LLMs): `export OPENAI_API_KEY=.
 2. Score:
 
    ```bash
-   python -m testing.tap.evaluation_main
+   python -m testing.tap.evaluation_main -m <model_path>
    ```
 
-   > Note: like PAIR, `evaluation_main.py` reads the model directory from a
-   > hardcoded `ours_model_path` at the top of `main()` — set it to your model dir
-   > first. It prints exact-match / begin-with / in-response ASR.
+   Reads `predictions_on_sep_tap.jsonl` and `predictions_on_alpaca_tap.jsonl`
+   from `<model_path>` and prints the SEP-tap metrics (sep_rate / probe-in-data /
+   probe-in-instruct ASR) and the Alpaca-tap ASR (exact-match / begin-with /
+   in-response).

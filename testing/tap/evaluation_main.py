@@ -86,10 +86,12 @@ def get_scores(output_instruct_data: Union[list, np.ndarray],
 
 if __name__ == "__main__":
 
-    # ours_model_path   = Path("meta-llama") / "Meta-SecAlign-8B-merged"
-    ours_model_path   = Path("meta-llama") / "Llama-3.1-8B-Instruct-log-TextTextText-instfuse-alpaca-dpo-4roles"
-    # ours_model_path   = Path("meta-llama") / "Llama-3.1-8B-Instruct-log"
-    print("Loading model from {}".format(ours_model_path))
+    _ap = argparse.ArgumentParser(
+        description="Score TAP attack predictions (predictions_on_{sep,alpaca}_tap.jsonl) in a model dir.")
+    _ap.add_argument("-m", "--model_path", type=Path, required=True,
+                     help="Model directory containing the TAP prediction files.")
+    ours_model_path = _ap.parse_args().model_path
+    print("Loading predictions from {}".format(ours_model_path))
 
     benign_response_name = os.path.join(ours_model_path, "predictions_on_sep_tap.jsonl")
 
