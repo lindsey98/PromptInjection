@@ -50,7 +50,14 @@ role. In `--mode official`, the role used for tool outputs is controlled by
 ## Training data (4-role / tool-calling)
 
 The 4-role models evaluated here are trained on a tool-calling DPO set built by
-[`data_generation/data_curation_drip_toolcall.py`](../../data_generation/data_curation_drip_toolcall.py):
+[`data_generation/data_curation_drip_toolcall.py`](../../data_generation/data_curation_drip_toolcall.py).
+
+**Why mix in InjecAgent.** In plain text tasks the system instruction is fairly
+generic, so the model rarely has to rely on it. In **tool-calling** tasks the
+system instruction is critical — it carries the **tool specification** the agent
+must follow. Adding a small amount of InjecAgent data familiarizes the model with
+this tool-calling format (and with injections hidden in tool observations). It is
+only a small slice — about **1K** of the pairs; the bulk is Alpaca.
 
 - For each **InjecAgent** case (direct-harm `dh` + data-stealing `ds`), it builds
   a symmetric `(chosen, rejected)` pair that share the same reasoning prefix so
@@ -59,10 +66,10 @@ The 4-role models evaluated here are trained on a tool-calling DPO set built by
     untrusted data and finishes the user's task (no attacker tool call);
   - **rejected** — follows the injection and calls the attacker tool, with valid
     arguments generated (and cached) by an LLM from the tool schema.
-- These are combined with the **Alpaca** DPO set and shuffled into
-  `datasets/alpaca_injecagent_dpo_combined.json` — **20,162 pairs** total.
-- **Alpaca is included to match Meta SecAlign's training mix**, so the comparison
-  against SecAlign is fair (same benign data source).
+- These InjecAgent pairs (~1K) are combined with the **Alpaca** DPO set and
+  shuffled into `datasets/alpaca_injecagent_dpo_combined.json` — **20,162 pairs**
+  total. **Alpaca is included to match Meta SecAlign's training mix**, so the
+  comparison against SecAlign is fair (same benign data source).
 
 ```bash
 # needs an OpenAI key for the attacker-argument generation
