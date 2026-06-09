@@ -128,12 +128,12 @@ Our setup uses `torch==2.8.0` on the following hardware.
 ### 3. Download the data
 
 The curated DRIP training and evaluation data is archived on Zenodo
-(DOI: [10.5281/zenodo.20325769](https://doi.org/10.5281/zenodo.20325769)).
+(DOI: [10.5281/zenodo.20603331](https://doi.org/10.5281/zenodo.20603331)).
 
 Download and extract it into the repository root:
 
 ```bash
-wget -O datasets.zip "https://zenodo.org/records/20325769/files/datasets.zip?download=1"
+wget -O datasets.zip "https://zenodo.org/records/20603331/files/datasets.zip?download=1"
 unzip datasets.zip
 mv datasets1/ datasets/ # rename it to datasets/
 ```
