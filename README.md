@@ -1,5 +1,7 @@
 # DRIP
 
+[![DOI](https://zenodo.org/badge/917193669.svg)](https://doi.org/10.5281/zenodo.20695257)
+
 Official code for **"DRIP: Defending Prompt Injection via Token-wise Representation Editing and Residual Fusion."**
 
 DRIP introduces two architectural modifications:
