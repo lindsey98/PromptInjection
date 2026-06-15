@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 SCRIPT_PATH="train_unified.py"
 BASELINE="drip"
 BASE_MODEL="meta-llama/Llama-3.1-8B-Instruct"
@@ -11,14 +10,14 @@ FSDP_CONFIG="training/config/fsdp_config.json"
 DELIMITER="TextTextText"
 SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}"
 
-BATCH_SIZE=4
+BATCH_SIZE=2
 EPOCH=1
 
 OBJECTIVE="dpo"
 MODEL_FAMILY="llama"
 ARCH="fuse"
 
-python -m torch.distributed.run --nproc_per_node=8 --master_port=29951 "$SCRIPT_PATH" \
+python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_PATH" \
   --objective "${OBJECTIVE}" \
   --model-family "${MODEL_FAMILY}" \
   --arch "${ARCH}" \
@@ -38,7 +37,7 @@ python -m torch.distributed.run --nproc_per_node=8 --master_port=29951 "$SCRIPT_
   --logging_steps 1 \
   --tf32 True \
   --attack "${DELIMITER}_None" \
-  --model_max_length 512 \
-  --dataloader_num_workers 4 \
-  --fsdp "shard_grad_op auto_wrap" \
+  --model_max_length 4096 \
+  --dataloader_num_workers 1 \
+  --fsdp "full_shard auto_wrap" \
   --fsdp_config "$FSDP_CONFIG"

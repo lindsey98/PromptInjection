@@ -3,15 +3,15 @@
 SCRIPT_PATH="train_unified.py"
 BASELINE="drip"
 BASE_MODEL="mistralai/Mistral-7B-Instruct-v0.3"
-DATA_PATH="datasets/sep/sep_data_cleaned_dpo_gpt.json"
+DATA_PATH="datasets/alpaca_data_cleaned_dpo_gpt.json"
 FILENAME=$(basename "$DATA_PATH")
 PREFIX=${FILENAME%%_*}
 FSDP_CONFIG="training/config/fsdp_config_mistral.json"
 DELIMITER="TextTextTextMistral"
 SAVE_PATH="${BASE_MODEL}-${DELIMITER}-${BASELINE}"
-CUDA_VISBLE_DEVICES=0,1,4,5,6,7
+CUDA_VISBLE_DEVICES=0,1,2,3,4,5
 
-BATCH_SIZE=4
+BATCH_SIZE=2
 EPOCH=1
 
 OBJECTIVE="dpo"
@@ -38,7 +38,7 @@ python -m torch.distributed.run --nproc_per_node=6 --master_port=29951 "$SCRIPT_
   --logging_steps 1 \
   --tf32 True \
   --attack "${DELIMITER}_None" \
-  --model_max_length 512 \
-  --dataloader_num_workers 4 \
+  --model_max_length 2048 \
+  --dataloader_num_workers 1 \
   --fsdp "full_shard auto_wrap" \
   --fsdp_config "$FSDP_CONFIG"

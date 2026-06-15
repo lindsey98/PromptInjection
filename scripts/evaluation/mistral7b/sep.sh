@@ -1,8 +1,9 @@
 #!/bin/bash
-
 # 1. Source Conda configuration (Adjust path if necessary)
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate prompt  # Replace with your actual env name
+
+set -euo pipefail
 
 # === Prompt for CUDA device ===
 read -p "Enter CUDA device ID to use (default: 0): " CUDA_ID

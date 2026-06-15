@@ -45,7 +45,7 @@ class TrainingArguments(transformers.TrainingArguments):
     beta: float = field(default=0.1)
     ref_model_init_kwargs: Optional[str] = field(default=None)
     precompute_ref_log_probs: Optional[bool] = field(default=False)
-    report_to: Optional[str] = "wandb"
+    report_to: Optional[str] = None
     resume_from_checkpoint: Optional[bool] = field(default=True)
 
 @dataclass
@@ -60,7 +60,7 @@ class DPOArgsSecAlign(trl.DPOConfig):
     lr_scale: Optional[bool] = field(default=True)
     beta: float = field(default=0.1)
     ref_model_init_kwargs: Optional[str] = field(default=None)
-    report_to: Optional[str] = "wandb"
+    report_to: Optional[str] = None
     resume_from_checkpoint: bool = False
 
 
@@ -76,7 +76,7 @@ class DPOArgsDRIP(trl.DPOConfig):
     lr_scale: Optional[bool] = field(default=True)
     beta: float = field(default=0.1)
     ref_model_init_kwargs: Optional[str] = field(default=None)
-    report_to: Optional[str] = "wandb"
+    report_to: Optional[str] = None
     resume_from_checkpoint: bool = False
     remove_unused_columns: bool = field(default=False)
 

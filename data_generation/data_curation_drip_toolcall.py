@@ -176,11 +176,11 @@ def build_injecagent_dpo_pairs(setting="base", attack="dh",
 
 
 if __name__ == "__main__":
-    random.seed(42)
-    pairs = build_injecagent_dpo_pairs(setting="base", attack="dh")
-    jdump(pairs, "./datasets/injecagent_dpo.json")
-    pairs = build_injecagent_dpo_pairs(setting="base", attack="ds")
-    jdump(pairs, "./datasets/injecagent_ds_dpo.json")
+    # random.seed(42)
+    # pairs = build_injecagent_dpo_pairs(setting="base", attack="dh")
+    # jdump(pairs, "./datasets/injecagent_dpo.json")
+    # pairs = build_injecagent_dpo_pairs(setting="base", attack="ds")
+    # jdump(pairs, "./datasets/injecagent_ds_dpo.json")
 
     a = jload("./datasets/injecagent_dpo.json")
     a2 = jload("./datasets/injecagent_ds_dpo.json")
