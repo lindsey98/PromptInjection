@@ -219,6 +219,7 @@ folder and run the matching one there:
 | Llama-3.1-8B-Instruct | Alpaca (3-role) | `bash ./scripts/llama8b/alpaca/drip_alpaca.sh` |
 | Llama-3.1-8B-Instruct | Alpaca + InjecAgent (4-role / tool-calling) | `bash ./scripts/llama8b/alpaca/drip_alpaca_4roles.sh` |
 | Mistral-7B-Instruct-v0.3 | SEP | `bash ./scripts/mistral7b/sep/drip_sep.sh` |
+| Mistral-7B-Instruct-v0.3 | Alpaca (3-role) | `bash ./scripts/mistral7b/alpaca/drip_alpaca.sh` |
 
 Training merges the LoRA adapter into the base weights and saves a **full
 checkpoint** that evaluation can load directly. For checkpoints saved as adapters
