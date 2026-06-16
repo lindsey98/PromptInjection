@@ -21,8 +21,6 @@ KNOWN_MODEL_CLASSES = frozenset(
         "MistralForCausalLMISE",
         "MistralForCausalLMAIR",
         "MistralForCausalLMPFT",
-        "Qwen3MoeForCausalLMDRIP",
-        "Qwen3ForCausalLMDRIP",
     }
 )
 
@@ -41,8 +39,6 @@ def detect_model_class_from_path(path: str) -> str:
     # Architecture prefix, matching the registry key naming.
     if "mistral" in p:
         prefix = "MistralForCausalLM"
-    elif "qwen" in p:
-        prefix = "Qwen3MoeForCausalLM" if "moe" in p else "Qwen3ForCausalLM"
     else:
         prefix = "LlamaForCausalLM"
 

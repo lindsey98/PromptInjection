@@ -13,7 +13,7 @@ from trl import DPOTrainer
 from config import DELIMITERS, DEFAULT_TOKENS, SPECIAL_DELM_TOKENS
 from training.trainer import (
     DPOTrainerOurs, SFTTrainerOurs, SFTTrainerISE,
-    DPOTrainerAIR, DPOTrainerMOE,
+    DPOTrainerAIR,
     DPOArgsDRIP, DPOArgsSecAlign,
     ModelArguments, DataArguments, TrainingArguments, AttackArguments,
 )
@@ -34,8 +34,6 @@ from modeling import (
     LlamaDRIPConfig, LlamaForCausalLMDRIP,
     LlamaForCausalLMNoFuse, LlamaForCausalLMConcatFuse,
     LlamaForCausalLMEmbeddingShift,
-    Qwen3MoeDRIPConfig, Qwen3MoeForCausalLMDRIP,
-    Qwen3DRIPConfig, Qwen3ForCausalLMDRIP,
     set_delimiter_ids_in_config,
 )
 
@@ -64,14 +62,10 @@ MISTRAL_REGISTRY = {
     "possep": (MistralISEConfig,  MistralForCausalLMPFT),
 }
 
-QWEN3_REGISTRY = {"fuse": (Qwen3DRIPConfig, Qwen3ForCausalLMDRIP)}
-QWEN3MoE_REGISTRY = {"fuse": (Qwen3MoeDRIPConfig, Qwen3MoeForCausalLMDRIP)}
 
 FAMILY_REGISTRY = {
     "llama":      LLAMA_REGISTRY,
     "mistral":    MISTRAL_REGISTRY,
-    "qwen3":       QWEN3_REGISTRY,
-    "qwen3moe": QWEN3MoE_REGISTRY,
 }
 
 
@@ -98,8 +92,6 @@ def build_lora_config(
         model_family: str,
 ) -> LoraConfig:
 
-    is_moe = model_family == "qwen3moe"
-
     if arch == "air":
         modules_to_save = ["intermediate_shifts"]
         if objective == "dpo":
@@ -110,13 +102,13 @@ def build_lora_config(
             lora_dropout=0.1,
             bias="none",
             task_type="CAUSAL_LM",
-            target_modules=_ATTN_MODULES if not is_moe else ["q_proj", "v_proj"],
+            target_modules= ["q_proj", "v_proj"],
             modules_to_save=modules_to_save,
         )
 
     if arch == "ise":
         modules_to_save = ["input_shifts", "embed_tokens"]
-        target_modules = _ATTN_MODULES if is_moe else "all-linear"
+        target_modules = "all-linear"
         return LoraConfig(
             r=32,
             lora_alpha=8,
@@ -204,7 +196,7 @@ def parse_args(argv):
                    choices=["dpo", "sft", "secalign_dpo", "struq_sft"],
                    required=True)
     p.add_argument("--model-family",
-                   choices=["llama", "mistral", "qwen", "qwen3", "qwen3moe"],
+                   choices=["llama", "mistral", ],
                    default="base")
     p.add_argument("--arch", required=True,
                    choices=["base", "fuse", "nofuse", "concatfuse",
@@ -402,15 +394,7 @@ def build_ref_model(Model, model_args, config, bnb_config=None):
 
 def build_trainer(known, model, ref_model, tokenizer, training_args, data_module):
 
-    is_moe = known.model_family == "qwen3moe"
-    if is_moe:
-        cls = DPOTrainerMOE
-        return cls(model=model,
-            ref_model=ref_model,
-            processing_class=tokenizer,
-            args=training_args,
-            **data_module)
-    elif known.objective == "dpo":
+    if known.objective == "dpo":
         cls = DPOTrainerOurs
         return cls(model=model,
                    ref_model=ref_model,
@@ -561,14 +545,16 @@ def main(argv: Optional[List[str]] = None):
         pass  # HF Trainer wraps later; use the callback below instead
 
     # ---- Sanity check: print one sample before training ----
+    dl = trainer.get_train_dataloader()
+    batch = next(iter(dl))
+
     if trainer.is_world_process_zero():
         print("\n" + "=" * 80)
         print("SANITY CHECK: one sample before training")
         print("=" * 80)
 
-        # 1. Config sanity
         cfg = getattr(model, "config", config)
-        dcfg = getattr(cfg, "text_config", None) or cfg  # DRIP fields on text_config for VL
+        dcfg = getattr(cfg, "text_config", None) or cfg
         print(f"\n[Config]")
         print(f"  num_labels       = {getattr(dcfg, 'num_labels', '?')}")
         print(f"  instruct_label   = {getattr(dcfg, 'instruct_label', '?')}")
@@ -580,7 +566,6 @@ def main(argv: Optional[List[str]] = None):
         print(f"  residual         = {getattr(dcfg, 'residual', '?')}")
         print(f"  bit_flip         = {getattr(dcfg, 'bit_flip', '?')}")
 
-        # 2. Trainable params summary
         print(f"\n[Trainable params]")
         trainable = 0
         total = 0
@@ -592,17 +577,8 @@ def main(argv: Optional[List[str]] = None):
                 if any(k in n for k in ["deinstruction_shift", "residual_weight"]):
                     key_params.append((n, p.numel(), p.dtype, p.requires_grad))
         print(f"  trainable: {trainable:,} / {total:,} ({100 * trainable / total:.4f}%)")
-        print(f"  key params:")
         for n, num, dt, rg in key_params:
             print(f"    {n}  numel={num:,}  dtype={dt}  requires_grad={rg}")
-
-        # 3. Fetch one batch from the dataloader
-        try:
-            dl = trainer.get_train_dataloader()
-            batch = next(iter(dl))
-        except Exception as e:
-            print(f"\n[Batch] Failed to fetch batch: {e}")
-            batch = None
 
         if batch is not None:
             print(f"\n[Batch keys] {list(batch.keys())}")
@@ -610,27 +586,23 @@ def main(argv: Optional[List[str]] = None):
                 if isinstance(v, torch.Tensor):
                     print(f"  {k}: shape={tuple(v.shape)}  dtype={v.dtype}")
 
-            # Decode the first chosen sample
             c_ids = batch["chosen_input_ids"][0]
             c_ex = batch["chosen_expert_labels"][0]
             c_am = batch["chosen_attention_mask"][0]
             valid_len = int(c_am.sum().item())
 
-            print(f"prompt_len={int(batch['prompt_lens'][0])}  max_prompt_length=1024")
             print(f"\n[Chosen sample 0] valid_len={valid_len}")
             text = tokenizer.decode(c_ids[:valid_len], skip_special_tokens=False)
-            print(f"--- decoded prompt+response ---")
             print(text[:2000] + ("...[TRUNCATED]" if len(text) > 2000 else ""))
 
-            # Expert label distribution
             print(f"\n[Expert label distribution (chosen[0], valid tokens only)]")
             ex_valid = c_ex[:valid_len]
-            for lab in range(getattr(dcfg, "num_labels", 4)):
+            dcfg_ref = getattr(getattr(model, "config", config), "text_config", None) or getattr(model, "config",
+                                                                                                 config)
+            for lab in range(getattr(dcfg_ref, "num_labels", 4)):
                 cnt = int((ex_valid == lab).sum().item())
-                pct = 100 * cnt / valid_len if valid_len else 0
-                print(f"  label {lab}: {cnt} tokens ({pct:.1f}%)")
+                print(f"  label {lab}: {cnt} tokens ({100 * cnt / valid_len:.1f}%)")
 
-            # Print first few transition tokens to verify boundaries
             print(f"\n[Label transitions (first 5)]")
             transitions = []
             for i in range(1, valid_len):
@@ -639,24 +611,17 @@ def main(argv: Optional[List[str]] = None):
                 if len(transitions) >= 5:
                     break
             for pos in transitions:
-                prev_lab = int(c_ex[pos - 1].item())
-                new_lab = int(c_ex[pos].item())
                 ctx = tokenizer.decode(c_ids[max(0, pos - 3):pos + 5])
-                print(f"  pos={pos}  {prev_lab} -> {new_lab}  ctx={repr(ctx)}")
+                print(f"  pos={pos}  {int(c_ex[pos - 1])} -> {int(c_ex[pos])}  ctx={repr(ctx)}")
 
-            # Sanity assertions
-            print(f"\n[Sanity checks]")
             unique_labels = set(c_ex[:valid_len].tolist())
-            expected = set(range(getattr(dcfg, "num_labels", 4)))
+            expected = set(range(getattr(dcfg_ref, "num_labels", 4)))
             ok = unique_labels == expected
+            print(f"\n[Sanity checks]")
             print(f"  all {len(expected)} labels present: {ok}  (got {sorted(unique_labels)})")
-            if not ok:
-                print(f"  ⚠️  MISSING LABELS: {expected - unique_labels}")
-                print(f"  ⚠️  deinstruction_shift may not be triggered if data_label is missing!")
 
         print("=" * 80 + "\n")
 
-    # Sync all ranks before continuing
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
 

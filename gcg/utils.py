@@ -68,7 +68,6 @@ class SuffixManager:
         "vicuna_v1.1",
         "mistral",
         "mistral03",
-        "qwen2",
         "chatgpt",
         "completion",
         "raw",

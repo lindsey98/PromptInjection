@@ -57,12 +57,9 @@ from modeling import (
     MistralForCausalLMPFT,
     MistralDRIPConfig,
     MistralISEConfig,
-    Qwen3MoeForCausalLMDRIP,
-    Qwen3MoeDRIPConfig,
     set_delimiter_ids_in_config,
     LlamaAIRConfig,
     MistralAIRConfig,
-    Qwen3DRIPConfig, Qwen3ForCausalLMDRIP
 )
 
 try:
@@ -89,8 +86,6 @@ REGISTRY: Dict[str, Tuple[type, type]] = {
     "MistralForCausalLMISE":    (MistralISEConfig,  MistralForCausalLMISE),
     "MistralForCausalLMAIR": (MistralAIRConfig, MistralForCausalLMAIR),
     "MistralForCausalLMPFT": (MistralISEConfig,  MistralForCausalLMPFT),
-    "Qwen3MoeForCausalLMDRIP":     (Qwen3MoeDRIPConfig, Qwen3MoeForCausalLMDRIP),
-    "Qwen3ForCausalLMDRIP": (Qwen3DRIPConfig, Qwen3ForCausalLMDRIP),
 
 }
 
@@ -255,7 +250,6 @@ def load_delimiters(model_name: str, path: str) -> str:
     # Order matters: more specific variants first.
     for key in ("SpclSpclSpcl",
                 "TextTextTextMistral",
-                "TextTextTextQwen",
                 "TextTextText-4roles",
                 "TextTextText", ):
         if key in path:
@@ -445,7 +439,7 @@ def test_model_output(
         out = tokenizer.decode(out_ids[0, input_ids.shape[1]:], skip_special_tokens=True)
 
         lower = out.lower().strip()
-        print(lower)
+        if print_results: print(lower)
         s_in = TEST_INJECTED_WORD.lower() in lower
         s_beg = lower.startswith(TEST_INJECTED_WORD.lower())
         s_eq = bool(regex.fullmatch(lower))

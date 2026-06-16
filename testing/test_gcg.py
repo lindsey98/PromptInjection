@@ -104,7 +104,6 @@ def load_delimiters(model_name: str, path: str) -> str:
     # Order matters: more specific variants first.
     for key in ("SpclSpclSpcl",
                 "TextTextTextMistral",
-                "TextTextTextQwen",
                 "TextTextText-4roles",
                 "TextTextText", ):
         if key in path:
@@ -445,22 +444,6 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             use_system_instructions=False,
             conv_template=fastchat.conversation.get_conv_template("mistral03"),
-            mode="prefix" if args.attack == "gcg_prefix" else "suffix",
-        )
-    elif "qwen" in model_path:
-        fastchat.conversation.register_conv_template(
-            CustomConversation(
-                name="qwen2",
-                system_message="",
-                roles=(inst_delm, resp_delm),
-                sep="\n\n",
-                sep2="<|endoftext|>",
-            )
-        )
-        suffix_manager = SuffixManager(
-            tokenizer=tokenizer,
-            use_system_instructions=False,
-            conv_template=fastchat.conversation.get_conv_template("qwen2"),
             mode="prefix" if args.attack == "gcg_prefix" else "suffix",
         )
 

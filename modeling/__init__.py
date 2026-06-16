@@ -5,5 +5,3 @@ from .llama_drip import LlamaForCausalLMDRIP, LlamaDRIPConfig, set_delimiter_ids
 from .mistral_ise import MistralForCausalLMISE, MistralForCausalLMPFT, MistralISEConfig
 from .mistral_air import MistralForCausalLMAIR, MistralAIRConfig
 from .mistral_drip import MistralForCausalLMDRIP, MistralDRIPConfig
-from .qwen_moe_drip import Qwen3MoeDRIPConfig, Qwen3MoeForCausalLMDRIP
-from .qwen_drip import Qwen3DRIPConfig, Qwen3ForCausalLMDRIP

@@ -487,7 +487,7 @@ class LlamaForCausalLMDRIP(transformers.LlamaForCausalLM):
                 first_resp_indices = _get_last_segment_start(self.response_label, expert_labels)
                 # Last token of the response delimiter = first + (delimiter_length - 1)
                 resp_delm_len = len(self.config.response_delm_ids)  # stored in config
-                end_indices = (first_resp_indices + resp_delm_len).clamp(max=expert_labels.shape[1] - 1)
+                end_indices = (first_resp_indices + resp_delm_len - 1).clamp(max=expert_labels.shape[1] - 1)
                 end_state   = hidden_states[batch_idx, end_indices]  # (B, H)
 
                 # Add last instruction token's semantic as a residual connection to the 1st response token
@@ -702,7 +702,7 @@ class LlamaForCausalLMConcatFuse(LlamaForCausalLMDRIP):
                 first_resp_indices = _get_last_segment_start(self.response_label, expert_labels)
                 # Last token of the response delimiter = first + (delimiter_length - 1)
                 resp_delm_len = len(self.config.response_delm_ids)  # stored in config
-                end_indices = (first_resp_indices + resp_delm_len).clamp(max=expert_labels.shape[1] - 1)
+                end_indices = (first_resp_indices + resp_delm_len - 1).clamp(max=expert_labels.shape[1] - 1)
                 end_state = hidden_states[batch_idx, end_indices]  # (B, H)
 
                 # fixme: Concat last instruction token's semantic to the 1st response token

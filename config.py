@@ -47,17 +47,6 @@ DELIMITERS = {
          '<|eot_id|><|start_header_id|>ipython<|end_header_id|>',
          '<|eot_id|><|start_header_id|>assistant<|end_header_id|>'],
 
-    "TextTextTextQwen": [
-        "<|im_start|>system",
-        "<|im_end|>\n<|im_start|>user",
-        "<|im_end|>\n<|im_start|>user\n<tool_response>",
-        "</tool_response><|im_end|>\n<|im_start|>assistant",
-    ],
-
-    "Qwen3-4B-Instruct-2507-log":['<|im_start|>system',
-        '<|im_end|><|im_start|>user',
-        '<|im_end|><|im_start|>assistant',],
-
     "TextTextTextMistral":['<s>[INST] <<SYS>>',
                                 ' <</SYS>>',
                                 '[/INST]'],
