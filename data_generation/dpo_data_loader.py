@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datasets import Dataset as HFDataset
 from .sft_data_loader import jload, _tokenize_fn
 
-# mm_token_type_ids convention (Qwen3.5 get_rope_index): text=0, image=1, video=2
+# mm_token_type_ids convention: text=0, image=1, video=2
 MM_TEXT, MM_IMAGE, MM_VIDEO = 0, 1, 2
 
 

@@ -371,7 +371,7 @@ def parse_args() -> argparse.Namespace:
         "--customized_model_class",
         type=str,
         default="",
-        help="(mode=fuse only) Registry key, e.g. QwenForCausalLMFuse.",
+        help="(mode=fuse only) Registry key, e.g. LlamaForCausalLMDRIP.",
     )
     p.add_argument("--no-expert-labels", action="store_true",
                    help="(mode=fuse only) Disable expert_labels passing.")

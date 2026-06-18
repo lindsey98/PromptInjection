@@ -217,7 +217,7 @@ class TransformersModel:
         attn_module = last_layer.self_attn
         cfg = attn_module.config if hasattr(attn_module, "config") else self.model.config
 
-        # 1. Pre-norm (Llama uses pre-norm; same for Mistral/Qwen)
+        # 1. Pre-norm (Llama uses pre-norm; same for Mistral)
         h = last_layer.input_layernorm(penultimate_hidden)  # (B, T_new, D)
 
         # 2. Q, K projections
