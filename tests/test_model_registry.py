@@ -18,8 +18,6 @@ from testing.model_registry import KNOWN_MODEL_CLASSES, detect_model_class_from_
         ("out/llama-possep", "LlamaForCausalLMPFT"),
         ("mistralai/Mistral-7B-Instruct-v0.3-drip", "MistralForCausalLMDRIP"),
         ("out/mistral-ise", "MistralForCausalLMISE"),
-        ("out/qwen3-moe-drip", "Qwen3MoeForCausalLMDRIP"),
-        ("out/qwen3-drip", "Qwen3ForCausalLMDRIP"),
     ],
 )
 def test_detect_known_classes(path, expected):
@@ -42,7 +40,7 @@ def test_detect_unknown_returns_empty(path):
 
 def test_detector_only_returns_known_classes():
     samples = [
-        "llama-drip", "mistral-ise", "qwen3-moe-drip", "llama-air", "llama-possep",
+        "llama-drip", "mistral-ise", "llama-air", "llama-possep",
         "llama-instfuse-nofusion", "llama-instfuse-concatfusion",
         "llama-instfuse-embeddingshift", "random-base-model",
     ]

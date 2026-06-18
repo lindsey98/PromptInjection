@@ -80,7 +80,7 @@ for name, delm in DELIMITERS.items():
             + delm[3] + "\n"
         )
     else:
-        # 3-role (existing behaviour — also covers Mistral/Qwen TextSys variants
+        # 3-role (existing behaviour — also covers Mistral TextSys variants
         PROMPT_FORMAT[name]["prompt_input"]    = (
                 delm[0] + "\n{instruction}\n\n"
                 + delm[1] + "\n{input}\n\n"
