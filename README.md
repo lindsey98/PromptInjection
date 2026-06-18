@@ -217,6 +217,7 @@ checkpoint the eval scripts load).
 | Repo (`Kelsey98/…`) | Base model (`--base_model_path`) | Template | Model class (`--customized_model_class`) | Tool calls |
 |---|---|---|---|---|
 | [`Llama-3.1-8B-Instruct-TextTextText-4roles-toolcall-drip`](https://huggingface.co/Kelsey98/Llama-3.1-8B-Instruct-TextTextText-4roles-toolcall-drip) | `meta-llama/Llama-3.1-8B-Instruct` | 4-role | `LlamaForCausalLMDRIP` | ✅ |
+| [`Llama-3.1-8B-Instruct-TextTextText-drip`](https://huggingface.co/Kelsey98/Llama-3.1-8B-Instruct-TextTextText-drip) | `meta-llama/Llama-3.1-8B-Instruct` | 3-role | `LlamaForCausalLMDRIP` | — |
 | [`Meta-Llama-3-8B-Instruct-TextTextText-drip`](https://huggingface.co/Kelsey98/Meta-Llama-3-8B-Instruct-TextTextText-drip) | `meta-llama/Meta-Llama-3-8B-Instruct` | 3-role | `LlamaForCausalLMDRIP` | — |
 | [`Mistral-7B-Instruct-v0.3-TextTextTextMistral-drip`](https://huggingface.co/Kelsey98/Mistral-7B-Instruct-v0.3-TextTextTextMistral-drip) | `mistralai/Mistral-7B-Instruct-v0.3` | 3-role | `MistralForCausalLMDRIP` | — |
 
